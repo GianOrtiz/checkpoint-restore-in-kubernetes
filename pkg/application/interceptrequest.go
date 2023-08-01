@@ -19,6 +19,13 @@ type InterceptRequest struct {
 	buffer      map[string]*interceptedRequest
 }
 
+func NewInterceptRequest(interceptor *domain.Interceptor) *InterceptRequest {
+	return &InterceptRequest{
+		Interceptor: interceptor,
+		buffer:      make(map[string]*interceptedRequest),
+	}
+}
+
 // Execute the use case for the interception of HTTP requests. It receives the
 // request, write it to a buffer, send it to the monitored container, waits for
 // the response, marked as solved in the buffer and send the response back.
@@ -30,7 +37,8 @@ func (ir *InterceptRequest) Execute(req *http.Request) (*http.Response, error) {
 		solved:  false,
 	}
 
-	reqCopy, err := http.NewRequest(req.Method, req.URL.String(), req.Body)
+	url := ir.Interceptor.MonitoredContainer.HTTPUrl + req.URL.String()
+	reqCopy, err := http.NewRequest(req.Method, url, req.Body)
 	if err != nil {
 		return nil, err
 	}
