@@ -1,4 +1,4 @@
-package application
+package usecase
 
 import (
 	"net/http"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/pkg/domain"
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/app/entity"
 	"github.com/google/uuid"
 )
 
@@ -17,29 +17,28 @@ func (h *fakeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func TestInterceptRequest(t *testing.T) {
-	monitoredContainer := domain.Container{
-		ID:      uuid.NewString(),
-		HTTPUrl: "http://localhost:80",
-	}
-	interceptor := domain.Interceptor{
-		ID:                    uuid.NewString(),
-		MonitoringContainerID: monitoredContainer.ID,
-		MonitoredContainer:    &monitoredContainer,
-		Config: &domain.Config{
-			CheckpointingInterval: time.Duration(time.Minute * 5),
-		},
-	}
-	interceptRequest := InterceptRequest{
-		buffer:      make(map[string]*interceptedRequest),
-		Interceptor: &interceptor,
-	}
 	t.Run("when receiving a http request", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "http://localhost:8000", nil)
 
 		t.Run("it should add the request to buffer with an unique identifier", func(t *testing.T) {
-			interceptRequest.Execute(req)
+			monitoredContainer := entity.Container{
+				ID:      uuid.NewString(),
+				HTTPUrl: "http://localhost:5000",
+			}
+			interceptor := entity.Interceptor{
+				ID:                    uuid.NewString(),
+				MonitoringContainerID: monitoredContainer.ID,
+				MonitoredContainer:    &monitoredContainer,
+				Config: &entity.Config{
+					CheckpointingInterval: time.Duration(time.Minute * 5),
+				},
+			}
+			useCase, _ := Interceptor(&interceptor)
 
-			requests := interceptRequest.buffer
+			reqID := uuid.NewString()
+			useCase.InterceptRequest(reqID, req)
+
+			requests := useCase.(*interceptorUseCase).buffer
 			requestIsInBufferAsUnsolved := false
 			for _, r := range requests {
 				if r.request == req {
@@ -56,15 +55,31 @@ func TestInterceptRequest(t *testing.T) {
 			// Create a fake http server and respond to the request
 			handler := fakeHandler{}
 			testServer := httptest.NewServer(&handler)
+
+			monitoredContainer := entity.Container{
+				ID:      uuid.NewString(),
+				HTTPUrl: testServer.URL,
+			}
+			interceptor := entity.Interceptor{
+				ID:                    uuid.NewString(),
+				MonitoringContainerID: monitoredContainer.ID,
+				MonitoredContainer:    &monitoredContainer,
+				Config: &entity.Config{
+					CheckpointingInterval: time.Duration(time.Minute * 5),
+				},
+			}
+			useCase, _ := Interceptor(&interceptor)
 			defer testServer.Close()
+
 			req := httptest.NewRequest(http.MethodGet, testServer.URL, nil)
 
 			t.Run("it should mark the request as solved", func(t *testing.T) {
-				interceptRequest.Execute(req)
-				requests := interceptRequest.buffer
+				reqID := uuid.NewString()
+				useCase.InterceptRequest(reqID, req)
+				requests := useCase.(*interceptorUseCase).buffer
 				requestIsInBufferAsSolved := false
 				for _, r := range requests {
-					if r.request == req {
+					if r.id == reqID {
 						requestIsInBufferAsSolved = r.solved
 						break
 					}
@@ -75,7 +90,8 @@ func TestInterceptRequest(t *testing.T) {
 			})
 
 			t.Run("it should send the response back", func(t *testing.T) {
-				res, _ := interceptRequest.Execute(req)
+				reqID := uuid.NewString()
+				res, _ := useCase.InterceptRequest(reqID, req)
 				if res.StatusCode != http.StatusOK {
 					t.Errorf("expected response with status code 200, received %d", res.StatusCode)
 				}

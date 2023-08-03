@@ -1,11 +1,9 @@
-package checkpoint
-
-import "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/pkg/domain"
+package entity
 
 // CheckpointConfig is the config to use for the checkpoint.
 type CheckpointConfig struct {
 	// Container is the container to make the checkpoint.
-	Container *domain.Container
+	Container *Container
 	// WriteTo is the location to write the checkpoint image to.
 	WriteTo string
 	// CheckpointHash is a hash to identify this checkpoint.

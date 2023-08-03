@@ -1,4 +1,4 @@
-package domain
+package entity
 
 // Container is an abstraction of every application running in a container.
 type Container struct {
