@@ -4,6 +4,8 @@ package entity
 type Container struct {
 	// ID is the unique identifier of the container in UUID.
 	ID string
+	// PID process identification number.
+	PID int32
 	// HTTPUrl is the URL to access the container to monitor.
 	HTTPUrl string
 }

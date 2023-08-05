@@ -3,7 +3,7 @@ package usecase
 import (
 	"net/http"
 
-	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/app/entity"
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 )
 
 // InterceptorUseCase declares use cases for the Interceptor. It declares the use cases for intercepting

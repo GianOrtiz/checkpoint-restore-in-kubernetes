@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/app/entity"
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	"github.com/google/uuid"
 )
 
