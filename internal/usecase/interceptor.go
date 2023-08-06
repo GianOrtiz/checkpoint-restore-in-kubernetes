@@ -20,8 +20,9 @@ type interceptedRequest struct {
 }
 
 type interceptorUseCase struct {
-	Interceptor *entity.Interceptor
-	buffer      map[string]*interceptedRequest
+	Interceptor       *entity.Interceptor
+	CheckpointService entity.CheckpointService
+	buffer            map[string]*interceptedRequest
 }
 
 func Interceptor(interceptor *entity.Interceptor) (InterceptorUseCase, error) {
@@ -31,13 +32,18 @@ func Interceptor(interceptor *entity.Interceptor) (InterceptorUseCase, error) {
 	}, nil
 }
 
+// InterceptRequest intercepts a given request and return the response after it is
+// redirected to the monitored application.
 func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) (*http.Response, error) {
+	// Add the request to the buffer. TODO: use a repository to store the buffer
 	uc.buffer[reqID] = &interceptedRequest{
 		id:      reqID,
 		request: req,
 		solved:  false,
 	}
 
+	// Create the URL to access the monitored URL from the monitored application URL
+	// and the content receive in the path of the intercepted request.
 	url := uc.Interceptor.MonitoredContainer.HTTPUrl + req.URL.Path
 	reqCopy, err := http.NewRequest(req.Method, url, req.Body)
 	if err != nil {
@@ -52,4 +58,21 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 	uc.buffer[reqID].solved = true
 
 	return res, nil
+}
+
+// Checkpoint the monitored application into a new image.
+func (uc *interceptorUseCase) Checkpoint() error {
+	return uc.CheckpointService.Checkpoint(&entity.CheckpointConfig{
+		Container:      uc.Interceptor.MonitoredContainer,
+		CheckpointHash: uc.generateHashForNewImage(),
+		Metadata:       uc.generateMetadataForNewImage(),
+	})
+}
+
+func (uc *interceptorUseCase) generateHashForNewImage() string {
+	panic("not implemented")
+}
+
+func (uc *interceptorUseCase) generateMetadataForNewImage() map[string]interface{} {
+	panic("not implemented")
 }

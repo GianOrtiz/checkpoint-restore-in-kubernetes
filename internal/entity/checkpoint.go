@@ -4,8 +4,6 @@ package entity
 type CheckpointConfig struct {
 	// Container is the container to make the checkpoint.
 	Container *Container
-	// WriteTo is the location to write the checkpoint image to.
-	WriteTo string
 	// CheckpointHash is a hash to identify this checkpoint.
 	CheckpointHash string
 	// Metadata is associated metada with this checkpoint image.
