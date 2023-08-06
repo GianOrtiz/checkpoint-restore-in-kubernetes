@@ -1,13 +1,6 @@
 package entity
 
-import "time"
-
-// Config is the configuration of the Interceptor.
-type Config struct {
-	// CheckpointingInterval is the interval between each checkpoint the Interceptor
-	// must perform in the monitored container.
-	CheckpointingInterval time.Duration
-}
+import "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 
 // Interceptor is the structure of the Ambassador pattern to monitor containers.
 // The Interceptor must intercept traffic from the container and save it in a buffer,
@@ -22,7 +15,7 @@ type Interceptor struct {
 	MonitoredContainer *Container
 	// Config is the configuration of the Interceptor, containing information like
 	// the interval for making checkpoints.
-	Config *Config
+	Config *interceptor.Config
 }
 
 // InterceptorRepository is the definition of the data access to the Interceptor.
@@ -34,5 +27,5 @@ type InterceptorRepository interface {
 	// Create creates a new Interceptor.
 	Create(interceptor *Interceptor) error
 	// UpdateInterceptorConfig updates the Interceptor configuration.
-	UpdateInterceptorConfig(interceptorId string, config Config) error
+	UpdateInterceptorConfig(interceptorId string, config *interceptor.Config) error
 }

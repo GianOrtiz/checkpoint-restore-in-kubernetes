@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	interceptorConfig "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	"github.com/google/uuid"
 )
@@ -29,7 +30,7 @@ func TestInterceptRequest(t *testing.T) {
 				ID:                    uuid.NewString(),
 				MonitoringContainerID: monitoredContainer.ID,
 				MonitoredContainer:    &monitoredContainer,
-				Config: &entity.Config{
+				Config: &interceptorConfig.Config{
 					CheckpointingInterval: time.Duration(time.Minute * 5),
 				},
 			}
@@ -64,7 +65,7 @@ func TestInterceptRequest(t *testing.T) {
 				ID:                    uuid.NewString(),
 				MonitoringContainerID: monitoredContainer.ID,
 				MonitoredContainer:    &monitoredContainer,
-				Config: &entity.Config{
+				Config: &interceptorConfig.Config{
 					CheckpointingInterval: time.Duration(time.Minute * 5),
 				},
 			}
