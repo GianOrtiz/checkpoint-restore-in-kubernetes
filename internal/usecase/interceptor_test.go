@@ -8,6 +8,8 @@ import (
 
 	interceptorConfig "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
+	mock_entity "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity/mock"
+	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 )
 
@@ -34,7 +36,7 @@ func TestInterceptRequest(t *testing.T) {
 					CheckpointingInterval: time.Duration(time.Minute * 5),
 				},
 			}
-			useCase, _ := Interceptor(&interceptor)
+			useCase, _ := Interceptor(&interceptor, nil, nil)
 
 			reqID := uuid.NewString()
 			useCase.InterceptRequest(reqID, req)
@@ -69,7 +71,7 @@ func TestInterceptRequest(t *testing.T) {
 					CheckpointingInterval: time.Duration(time.Minute * 5),
 				},
 			}
-			useCase, _ := Interceptor(&interceptor)
+			useCase, _ := Interceptor(&interceptor, nil, nil)
 			defer testServer.Close()
 
 			req := httptest.NewRequest(http.MethodGet, testServer.URL, nil)
@@ -99,4 +101,35 @@ func TestInterceptRequest(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestCheckpoint(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	checkpointService := mock_entity.NewMockCheckpointService(ctrl)
+	stateManagerService := mock_entity.NewMockStateManagerService(ctrl)
+
+	monitoredContainer := entity.Container{
+		ID:      uuid.NewString(),
+		HTTPUrl: "http://localhost:8000",
+		Name:    "test",
+	}
+
+	checkpointService.EXPECT().Checkpoint(gomock.Any()).Return(nil).Times(1)
+	stateManagerService.EXPECT().SaveMetadata(monitoredContainer.Name, gomock.Any()).Return(nil).Times(1)
+
+	interceptor := entity.Interceptor{
+		ID:                    uuid.NewString(),
+		MonitoringContainerID: monitoredContainer.ID,
+		MonitoredContainer:    &monitoredContainer,
+		Config: &interceptorConfig.Config{
+			CheckpointingInterval: time.Duration(time.Minute * 5),
+		},
+	}
+	useCase, _ := Interceptor(&interceptor, checkpointService, stateManagerService)
+
+	err := useCase.Checkpoint()
+	if err != nil {
+		t.Errorf("expected error nil, received %v\n", err)
+	}
 }

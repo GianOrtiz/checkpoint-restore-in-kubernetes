@@ -8,6 +8,8 @@ type Container struct {
 	PID int32
 	// HTTPUrl is the URL to access the container to monitor.
 	HTTPUrl string
+	// Name of the container.
+	Name string
 }
 
 // ContainerRepository is the definition of data access to Container.

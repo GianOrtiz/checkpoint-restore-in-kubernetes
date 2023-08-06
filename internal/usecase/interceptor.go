@@ -1,7 +1,11 @@
 package usecase
 
 import (
+	"encoding/hex"
+	"fmt"
+	"hash/fnv"
 	"net/http"
+	"time"
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 )
@@ -11,24 +15,30 @@ import (
 type InterceptorUseCase interface {
 	// InterceptRequest intercepts an HTTP request that should have been sent to the monitored application.
 	InterceptRequest(reqID string, req *http.Request) (*http.Response, error)
+	// Checkpoint creates a new checkpoint of the monitored container.
+	Checkpoint() error
 }
 
 type interceptedRequest struct {
-	id      string
-	request *http.Request
-	solved  bool
+	id       string
+	solvedAt time.Time
+	request  *http.Request
+	solved   bool
 }
 
 type interceptorUseCase struct {
-	Interceptor       *entity.Interceptor
-	CheckpointService entity.CheckpointService
-	buffer            map[string]*interceptedRequest
+	Interceptor         *entity.Interceptor
+	CheckpointService   entity.CheckpointService
+	StateManagerService entity.StateManagerService
+	buffer              map[string]*interceptedRequest
 }
 
-func Interceptor(interceptor *entity.Interceptor) (InterceptorUseCase, error) {
+func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService) (InterceptorUseCase, error) {
 	return &interceptorUseCase{
-		Interceptor: interceptor,
-		buffer:      make(map[string]*interceptedRequest),
+		Interceptor:         interceptor,
+		buffer:              make(map[string]*interceptedRequest),
+		CheckpointService:   checkpointService,
+		StateManagerService: stateManagerService,
 	}, nil
 }
 
@@ -56,23 +66,56 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 	}
 
 	uc.buffer[reqID].solved = true
+	uc.buffer[reqID].solvedAt = time.Now()
 
 	return res, nil
 }
 
 // Checkpoint the monitored application into a new image.
 func (uc *interceptorUseCase) Checkpoint() error {
+	metadata := uc.generateMetadataForNewImage()
+	if err := uc.StateManagerService.SaveMetadata(uc.Interceptor.MonitoredContainer.Name, metadata); err != nil {
+		return err
+	}
+
+	checkpointHash := uc.generateHashForNewImage(uc.Interceptor.MonitoredContainer.Name)
 	return uc.CheckpointService.Checkpoint(&entity.CheckpointConfig{
 		Container:      uc.Interceptor.MonitoredContainer,
-		CheckpointHash: uc.generateHashForNewImage(),
-		Metadata:       uc.generateMetadataForNewImage(),
+		CheckpointHash: checkpointHash,
 	})
 }
 
-func (uc *interceptorUseCase) generateHashForNewImage() string {
-	panic("not implemented")
+func (uc *interceptorUseCase) generateHashForNewImage(containerName string) string {
+	h := fnv.New64a()
+
+	// Hash of Timestamp rounded to previous hour
+	h.Write([]byte(time.Now().UTC().String()))
+	h.Write([]byte(containerName))
+	hash := hex.EncodeToString(h.Sum(nil))
+	return fmt.Sprintf("%s-%s", containerName, hash)
 }
 
 func (uc *interceptorUseCase) generateMetadataForNewImage() map[string]interface{} {
-	panic("not implemented")
+	lastTimestamp := time.Now()
+	var lastRequestSolved *interceptedRequest
+	for _, r := range uc.buffer {
+		if lastRequestSolved == nil {
+			lastRequestSolved = r
+		} else {
+			if lastRequestSolved.solvedAt.Compare(r.solvedAt) < 0 {
+				lastRequestSolved = r
+			}
+		}
+	}
+
+	// lastRequestSolvedID as -1 means no request was handled before a checkpoint.
+	lastRequestSolvedID := "-1"
+	if lastRequestSolved != nil {
+		lastRequestSolvedID = lastRequestSolved.id
+	}
+
+	return map[string]interface{}{
+		"lastTimestamp":       lastTimestamp,
+		"lastRequestSolvedID": lastRequestSolvedID,
+	}
 }
