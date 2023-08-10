@@ -9,6 +9,7 @@ import (
 	interceptorConfig "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	mock_entity "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity/mock"
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/repository/interceptedrequest"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 )
@@ -36,16 +37,17 @@ func TestInterceptRequest(t *testing.T) {
 					CheckpointingInterval: time.Duration(time.Minute * 5),
 				},
 			}
-			useCase, _ := Interceptor(&interceptor, nil, nil)
+			interceptedRequestRepository := interceptedrequest.InMemory()
+			useCase, _ := Interceptor(&interceptor, nil, nil, interceptedRequestRepository)
 
 			reqID := uuid.NewString()
 			useCase.InterceptRequest(reqID, req)
 
-			requests := useCase.(*interceptorUseCase).buffer
+			requests, _ := interceptedRequestRepository.GetAll()
 			requestIsInBufferAsUnsolved := false
 			for _, r := range requests {
-				if r.request == req {
-					requestIsInBufferAsUnsolved = !r.solved
+				if r.Request == req {
+					requestIsInBufferAsUnsolved = !r.Solved
 					break
 				}
 			}
@@ -71,7 +73,8 @@ func TestInterceptRequest(t *testing.T) {
 					CheckpointingInterval: time.Duration(time.Minute * 5),
 				},
 			}
-			useCase, _ := Interceptor(&interceptor, nil, nil)
+			interceptedRequestRepository := interceptedrequest.InMemory()
+			useCase, _ := Interceptor(&interceptor, nil, nil, interceptedRequestRepository)
 			defer testServer.Close()
 
 			req := httptest.NewRequest(http.MethodGet, testServer.URL, nil)
@@ -79,11 +82,11 @@ func TestInterceptRequest(t *testing.T) {
 			t.Run("it should mark the request as solved", func(t *testing.T) {
 				reqID := uuid.NewString()
 				useCase.InterceptRequest(reqID, req)
-				requests := useCase.(*interceptorUseCase).buffer
+				requests, _ := interceptedRequestRepository.GetAll()
 				requestIsInBufferAsSolved := false
 				for _, r := range requests {
-					if r.id == reqID {
-						requestIsInBufferAsSolved = r.solved
+					if r.ID == reqID {
+						requestIsInBufferAsSolved = r.Solved
 						break
 					}
 				}
@@ -126,7 +129,8 @@ func TestCheckpoint(t *testing.T) {
 			CheckpointingInterval: time.Duration(time.Minute * 5),
 		},
 	}
-	useCase, _ := Interceptor(&interceptor, checkpointService, stateManagerService)
+	interceptedRequestRepository := interceptedrequest.InMemory()
+	useCase, _ := Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository)
 
 	err := useCase.Checkpoint()
 	if err != nil {

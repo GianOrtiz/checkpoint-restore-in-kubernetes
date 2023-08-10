@@ -19,37 +19,32 @@ type InterceptorUseCase interface {
 	Checkpoint() error
 }
 
-type interceptedRequest struct {
-	id       string
-	solvedAt time.Time
-	request  *http.Request
-	solved   bool
-}
-
 type interceptorUseCase struct {
-	Interceptor         *entity.Interceptor
-	CheckpointService   entity.CheckpointService
-	StateManagerService entity.StateManagerService
-	buffer              map[string]*interceptedRequest
+	Interceptor                  *entity.Interceptor
+	CheckpointService            entity.CheckpointService
+	StateManagerService          entity.StateManagerService
+	InterceptedRequestRepository entity.InterceptedRequestRepository
 }
 
-func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService) (InterceptorUseCase, error) {
+func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository) (InterceptorUseCase, error) {
 	return &interceptorUseCase{
-		Interceptor:         interceptor,
-		buffer:              make(map[string]*interceptedRequest),
-		CheckpointService:   checkpointService,
-		StateManagerService: stateManagerService,
+		Interceptor:                  interceptor,
+		InterceptedRequestRepository: interceptedRequestRepository,
+		CheckpointService:            checkpointService,
+		StateManagerService:          stateManagerService,
 	}, nil
 }
 
 // InterceptRequest intercepts a given request and return the response after it is
 // redirected to the monitored application.
 func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) (*http.Response, error) {
-	// Add the request to the buffer. TODO: use a repository to store the buffer
-	uc.buffer[reqID] = &interceptedRequest{
-		id:      reqID,
-		request: req,
-		solved:  false,
+	interceptedRequest := entity.InterceptedRequest{
+		ID:      reqID,
+		Request: req,
+		Solved:  false,
+	}
+	if err := uc.InterceptedRequestRepository.Save(&interceptedRequest); err != nil {
+		return nil, err
 	}
 
 	// Create the URL to access the monitored URL from the monitored application URL
@@ -65,8 +60,9 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 		return nil, err
 	}
 
-	uc.buffer[reqID].solved = true
-	uc.buffer[reqID].solvedAt = time.Now()
+	if err := uc.InterceptedRequestRepository.SetSolved(reqID, time.Now(), true); err != nil {
+		return nil, err
+	}
 
 	return res, nil
 }
@@ -97,21 +93,12 @@ func (uc *interceptorUseCase) generateHashForNewImage(containerName string) stri
 
 func (uc *interceptorUseCase) generateMetadataForNewImage() map[string]interface{} {
 	lastTimestamp := time.Now()
-	var lastRequestSolved *interceptedRequest
-	for _, r := range uc.buffer {
-		if lastRequestSolved == nil {
-			lastRequestSolved = r
-		} else {
-			if lastRequestSolved.solvedAt.Compare(r.solvedAt) < 0 {
-				lastRequestSolved = r
-			}
-		}
-	}
+	// TODO: add a logger to log the error?
+	lastRequestSolved, _ := uc.InterceptedRequestRepository.GetLastRequestSolved()
 
-	// lastRequestSolvedID as -1 means no request was handled before a checkpoint.
 	lastRequestSolvedID := "-1"
 	if lastRequestSolved != nil {
-		lastRequestSolvedID = lastRequestSolved.id
+		lastRequestSolvedID = lastRequestSolved.ID
 	}
 
 	return map[string]interface{}{
