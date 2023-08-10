@@ -43,5 +43,5 @@ func (s *CRIUCheckpointService) Checkpoint(config *entity.CheckpointConfig) erro
 	return s.Dump(&rpc.CriuOpts{
 		Pid:         &config.Container.PID,
 		ImagesDirFd: &imagesDirFd,
-	}, criu.NoNotify{})
+	}, nil)
 }
