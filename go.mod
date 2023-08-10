@@ -4,9 +4,10 @@ go 1.20
 
 require (
 	github.com/checkpoint-restore/go-criu/v6 v6.3.0
-	github.com/google/uuid v1.3.0
 	github.com/golang/mock v1.6.0
+	github.com/google/uuid v1.3.0
 	gopkg.in/yaml.v2 v2.4.0
+	github.com/lib/pq v1.10.9
 )
 
 require (
