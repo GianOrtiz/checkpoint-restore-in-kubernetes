@@ -24,8 +24,8 @@ func (r *SQLInterceptedRequestRepository) Save(req *entity.InterceptedRequest) e
 	}
 	defer tx.Commit()
 
-	query := "INSERT INTO intercepted_request(id, solved_at, solved, req) VALUES($1, $2, $3, $4)"
-	_, err = tx.Exec(query, req.ID, nil, req.Solved, req.Request)
+	query := "INSERT INTO intercepted_request(id, solved_at, solved, req, version) VALUES($1, $2, $3, $4, $5)"
+	_, err = tx.Exec(query, req.ID, nil, req.Solved, req.Request, req.Version)
 	if err != nil {
 		if err := tx.Rollback(); err != nil {
 			return err
@@ -56,7 +56,7 @@ func (r *SQLInterceptedRequestRepository) SetSolved(reqID string, solvedAt time.
 }
 
 func (r *SQLInterceptedRequestRepository) GetLastRequestSolved() (*entity.InterceptedRequest, error) {
-	stmt, err := r.conn.Prepare("SELECT id, solved_at, solved, req FROM intercepted_request ORDER BY solved_at DESC LIMIT 1")
+	stmt, err := r.conn.Prepare("SELECT id, solved_at, solved, req FROM intercepted_request, version ORDER BY solved_at DESC LIMIT 1")
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (r *SQLInterceptedRequestRepository) GetLastRequestSolved() (*entity.Interc
 
 	var req entity.InterceptedRequest
 	row := stmt.QueryRow()
-	if err := row.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request); err != nil {
+	if err := row.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request, &req.Version); err != nil {
 		return nil, err
 	}
 
@@ -72,7 +72,7 @@ func (r *SQLInterceptedRequestRepository) GetLastRequestSolved() (*entity.Interc
 }
 
 func (r *SQLInterceptedRequestRepository) GetAll() ([]*entity.InterceptedRequest, error) {
-	stmt, err := r.conn.Prepare("SELECT id, solved_at, solved, req FROM intercepted_request ORDER BY solved_at")
+	stmt, err := r.conn.Prepare("SELECT id, solved_at, solved, req, version FROM intercepted_request ORDER BY solved_at")
 	if err != nil {
 		return nil, err
 	}
@@ -86,11 +86,25 @@ func (r *SQLInterceptedRequestRepository) GetAll() ([]*entity.InterceptedRequest
 
 	for rows.Next() {
 		var req entity.InterceptedRequest
-		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request); err != nil {
+		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request, &req.Version); err != nil {
 			return nil, err
 		}
 		requests = append(requests, &req)
 	}
 
 	return requests, nil
+}
+
+func (r *SQLInterceptedRequestRepository) GetLastVersion() (int, error) {
+	var version int
+
+	stmt, err := r.conn.Prepare("SELECT version FROM intercepted_request ORDER BY version DESC")
+	if err != nil {
+		return version, err
+	}
+	defer stmt.Close()
+
+	row := stmt.QueryRow()
+	err = row.Scan(&version)
+	return version, err
 }

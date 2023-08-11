@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
@@ -24,25 +25,41 @@ type interceptorUseCase struct {
 	CheckpointService            entity.CheckpointService
 	StateManagerService          entity.StateManagerService
 	InterceptedRequestRepository entity.InterceptedRequestRepository
+	LastVersion                  int
+	Mutex                        sync.Mutex
 }
 
 func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository) (InterceptorUseCase, error) {
+	// Retrieve the last version of request in the database
+	lastVersion, err := interceptedRequestRepository.GetLastVersion()
+	if err != nil {
+		return nil, err
+	}
+
 	return &interceptorUseCase{
 		Interceptor:                  interceptor,
 		InterceptedRequestRepository: interceptedRequestRepository,
 		CheckpointService:            checkpointService,
 		StateManagerService:          stateManagerService,
+		LastVersion:                  lastVersion,
+		Mutex:                        sync.Mutex{},
 	}, nil
 }
 
 // InterceptRequest intercepts a given request and return the response after it is
 // redirected to the monitored application.
 func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) (*http.Response, error) {
+	// TODO: abstract this
+	uc.Mutex.Lock()
 	interceptedRequest := entity.InterceptedRequest{
 		ID:      reqID,
 		Request: req,
 		Solved:  false,
+		Version: uc.LastVersion + 1,
 	}
+	uc.LastVersion++
+	uc.Mutex.Unlock()
+
 	if err := uc.InterceptedRequestRepository.Save(&interceptedRequest); err != nil {
 		return nil, err
 	}

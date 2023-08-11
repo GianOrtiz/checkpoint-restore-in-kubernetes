@@ -15,6 +15,8 @@ type InterceptedRequest struct {
 	Request *http.Request
 	// Solved indicates whether or not the request was already solved.
 	Solved bool
+	// Version indicates the event version of this request in the event sourcing.
+	Version int
 }
 
 type InterceptedRequestRepository interface {
@@ -26,4 +28,6 @@ type InterceptedRequestRepository interface {
 	GetLastRequestSolved() (*InterceptedRequest, error)
 	// GetAll gets all intercepted requests in the datasource.
 	GetAll() ([]*InterceptedRequest, error)
+	// GetLastVersion gets the last version of request in the event source datasource.
+	GetLastVersion() (int, error)
 }
