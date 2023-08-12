@@ -2,7 +2,7 @@ package statemanager
 
 type alwaysAcceptingStateManagerStub struct{}
 
-func NewAlwaysAcceptingStateManagerStub() *alwaysAcceptingStateManagerStub {
+func AlawaysAcceptingStub() *alwaysAcceptingStateManagerStub {
 	return &alwaysAcceptingStateManagerStub{}
 }
 

@@ -72,6 +72,12 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 		return nil, err
 	}
 
+	for key, values := range req.Header {
+		for _, value := range values {
+			reqCopy.Header.Add(key, value)
+		}
+	}
+
 	res, err := http.DefaultClient.Do(reqCopy)
 	if err != nil {
 		return nil, err

@@ -1,4 +1,4 @@
-package criu
+package checkpoint
 
 import (
 	"os"
@@ -21,7 +21,7 @@ type CRIUCheckpointService struct {
 }
 
 // NewService creates a new service using CRIU for checkpoint/restore.
-func NewService(cfg CRIUCheckpointServiceConfig) (*CRIUCheckpointService, error) {
+func CRIU(cfg CRIUCheckpointServiceConfig) (*CRIUCheckpointService, error) {
 	criu := criu.MakeCriu()
 	return &CRIUCheckpointService{
 		Criu:            criu,

@@ -1,0 +1,54 @@
+package delivery
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/usecase"
+	"github.com/google/uuid"
+)
+
+type InterceptorServer struct {
+	Port               int
+	InterceptorUseCase usecase.InterceptorUseCase
+}
+
+func NewInterceptorServer(port int, interceptorUseCase usecase.InterceptorUseCase) *InterceptorServer {
+	return &InterceptorServer{
+		Port:               port,
+		InterceptorUseCase: interceptorUseCase,
+	}
+}
+
+func (s *InterceptorServer) Run() error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		reqID := uuid.NewString()
+		log.Printf("Handling request %q\n", reqID)
+		res, err := s.InterceptorUseCase.InterceptRequest(reqID, r)
+		log.Printf("Request %q handled with err %v and response %v\n", reqID, err, res)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		responseBody, err := io.ReadAll(res.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(res.StatusCode)
+		w.Write(responseBody)
+		for key, values := range res.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+	})
+
+	log.Printf("Listening on port %d\n", s.Port)
+	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
+}
