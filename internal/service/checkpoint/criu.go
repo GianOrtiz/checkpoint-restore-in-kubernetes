@@ -1,6 +1,7 @@
 package checkpoint
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
@@ -29,8 +30,9 @@ func CRIU(cfg CRIUCheckpointServiceConfig) (*CRIUCheckpointService, error) {
 	}, nil
 }
 
-func (s *CRIUCheckpointService) Checkpoint(config *entity.CheckpointConfig) error {
-	imagesDir, err := os.OpenFile(s.imagesDirectory, 0, os.ModeDir)
+func (service *CRIUCheckpointService) Checkpoint(config *entity.CheckpointConfig) error {
+	checkpointImageDirectory := fmt.Sprintf("%s/%s", service.imagesDirectory, config.CheckpointHash)
+	imagesDir, err := os.OpenFile(checkpointImageDirectory, 0, os.ModeDir)
 	if err != nil {
 		return err
 	}
@@ -40,7 +42,7 @@ func (s *CRIUCheckpointService) Checkpoint(config *entity.CheckpointConfig) erro
 
 	// Uses the dump command on CRIU to dump a new checkpoint image of the process in
 	// the given directory by the configuration.
-	return s.Dump(&rpc.CriuOpts{
+	return service.Dump(&rpc.CriuOpts{
 		Pid:         &config.Container.PID,
 		ImagesDirFd: &imagesDirFd,
 	}, nil)
