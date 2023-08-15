@@ -6,9 +6,9 @@ import "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 // saving checkpoint images metadata and retrieving them.
 type StateManagerUseCase interface {
 	// SaveImageMetadata saves metadata about a checkpoint image.
-	SaveImageMetadata(checkpointHash string, metadata map[string]interface{}) error
+	SaveImageMetadata(checkpointHash string, metadata *entity.ContainerMetadata) error
 	// RetrieveImageMetadata retrieves the metadata about a checkpoint image.
-	RetrieveImageMetadata(checkpointHash string) (map[string]interface{}, error)
+	RetrieveImageMetadata(checkpointHash string) (*entity.ContainerMetadata, error)
 	// Restore restores the monitored application container to a previous checkpointed
 	// image.
 	Restore() error
@@ -17,9 +17,9 @@ type StateManagerUseCase interface {
 // ContainerMetadataRepository repository to access container metadata at a datasource.
 type ContainerMetadataRepository interface {
 	// Insert inserts a new metadata.
-	Insert(checkpointHash string, metadata map[string]interface{}) error
+	Insert(checkpointHash string, metadata *entity.ContainerMetadata) error
 	// Get retrieves a container metadata by checkpointHash.
-	Get(checkpointHash string) (map[string]interface{}, error)
+	Get(checkpointHash string) (*entity.ContainerMetadata, error)
 	// UpsertContainerLatestCheckpoint upserts the content of the latest checkpoint
 	// hash the container received.
 	UpsertContainerLatestCheckpoint(checkpointHash string, containerID string) error
@@ -41,7 +41,7 @@ func StateManager(repository ContainerMetadataRepository, restoreService entity.
 	}, nil
 }
 
-func (uc *stateManagerUseCase) SaveImageMetadata(checkpointHash string, metadata map[string]interface{}) error {
+func (uc *stateManagerUseCase) SaveImageMetadata(checkpointHash string, metadata *entity.ContainerMetadata) error {
 	err := uc.repository.UpsertContainerLatestCheckpoint(checkpointHash, uc.monitoredApplication.ID)
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func (uc *stateManagerUseCase) SaveImageMetadata(checkpointHash string, metadata
 	return uc.repository.Insert(checkpointHash, metadata)
 }
 
-func (uc *stateManagerUseCase) RetrieveImageMetadata(checkpointHash string) (map[string]interface{}, error) {
+func (uc *stateManagerUseCase) RetrieveImageMetadata(checkpointHash string) (*entity.ContainerMetadata, error) {
 	return uc.repository.Get(checkpointHash)
 }
 

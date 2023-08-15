@@ -114,7 +114,7 @@ func (uc *interceptorUseCase) generateHashForNewImage(containerName string) stri
 	return fmt.Sprintf("%s-%s", containerName, hash)
 }
 
-func (uc *interceptorUseCase) generateMetadataForNewImage() map[string]interface{} {
+func (uc *interceptorUseCase) generateMetadataForNewImage() *entity.ContainerMetadata {
 	lastTimestamp := time.Now()
 	// TODO: add a logger to log the error?
 	lastRequestSolved, _ := uc.InterceptedRequestRepository.GetLastRequestSolved()
@@ -124,8 +124,8 @@ func (uc *interceptorUseCase) generateMetadataForNewImage() map[string]interface
 		lastRequestSolvedID = lastRequestSolved.ID
 	}
 
-	return map[string]interface{}{
-		"lastTimestamp":       lastTimestamp,
-		"lastRequestSolvedID": lastRequestSolvedID,
+	return &entity.ContainerMetadata{
+		LastTimestamp:       lastTimestamp,
+		LastRequestSolvedID: lastRequestSolvedID,
 	}
 }

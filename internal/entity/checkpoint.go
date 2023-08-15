@@ -1,3 +1,5 @@
+//go:generate mockgen -source=./checkpoint.go -destination=./mock/checkpoint.go
+
 package entity
 
 // CheckpointConfig is the config to use for the checkpoint.
