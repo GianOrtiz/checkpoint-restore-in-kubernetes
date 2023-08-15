@@ -1,5 +1,7 @@
 package usecase
 
+import "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
+
 // StateManagerUseCase declares use cases for the State Manager. It declares the use cases for
 // saving checkpoint images metadata and retrieving them.
 type StateManagerUseCase interface {
@@ -7,6 +9,9 @@ type StateManagerUseCase interface {
 	SaveImageMetadata(checkpointHash string, metadata map[string]interface{}) error
 	// RetrieveImageMetadata retrieves the metadata about a checkpoint image.
 	RetrieveImageMetadata(checkpointHash string) (map[string]interface{}, error)
+	// Restore restores the monitored application container to a previous checkpointed
+	// image.
+	Restore() error
 }
 
 // ContainerMetadataRepository repository to access container metadata at a datasource.
@@ -15,22 +20,48 @@ type ContainerMetadataRepository interface {
 	Insert(checkpointHash string, metadata map[string]interface{}) error
 	// Get retrieves a container metadata by checkpointHash.
 	Get(checkpointHash string) (map[string]interface{}, error)
+	// UpsertContainerLatestCheckpoint upserts the content of the latest checkpoint
+	// hash the container received.
+	UpsertContainerLatestCheckpoint(checkpointHash string, containerID string) error
+	// LatestContainerCheckpoint retrieves the latest container checkpoint hash.
+	LatestContainerCheckpoint(containerID string) (string, error)
 }
 
 type stateManagerUseCase struct {
-	repository ContainerMetadataRepository
+	repository           ContainerMetadataRepository
+	restoreService       entity.RestoreService
+	monitoredApplication *entity.Container
 }
 
-func StateManager(repository ContainerMetadataRepository) (StateManagerUseCase, error) {
+func StateManager(repository ContainerMetadataRepository, restoreService entity.RestoreService, monitoredApplication *entity.Container) (StateManagerUseCase, error) {
 	return &stateManagerUseCase{
-		repository: repository,
+		repository:           repository,
+		restoreService:       restoreService,
+		monitoredApplication: monitoredApplication,
 	}, nil
 }
 
 func (uc *stateManagerUseCase) SaveImageMetadata(checkpointHash string, metadata map[string]interface{}) error {
+	err := uc.repository.UpsertContainerLatestCheckpoint(checkpointHash, uc.monitoredApplication.ID)
+	if err != nil {
+		return err
+	}
+
 	return uc.repository.Insert(checkpointHash, metadata)
 }
 
 func (uc *stateManagerUseCase) RetrieveImageMetadata(checkpointHash string) (map[string]interface{}, error) {
 	return uc.repository.Get(checkpointHash)
+}
+
+func (uc *stateManagerUseCase) Restore() error {
+	checkpointHash, err := uc.repository.LatestContainerCheckpoint(uc.monitoredApplication.ID)
+	if err != nil {
+		return err
+	}
+
+	return uc.restoreService.Restore(&entity.RestoreConfig{
+		Container:      uc.monitoredApplication,
+		CheckpointHash: checkpointHash,
+	})
 }
