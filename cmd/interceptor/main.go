@@ -40,6 +40,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	interceptorServer := delivery.NewInterceptorServer(8001, interceptorUseCase)
+	interceptorServer := delivery.InterceptorServer(8001, interceptorUseCase)
 	interceptorServer.Run()
 }
