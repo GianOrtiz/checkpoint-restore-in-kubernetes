@@ -1,0 +1,3 @@
+package statemanager
+
+func main() {}
