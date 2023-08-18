@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/delivery/handler"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/usecase"
 )
 
@@ -22,11 +23,15 @@ func StateManager(port int, stateManagerUseCase usecase.StateManagerUseCase) *st
 
 func (s *stateManagerServer) Run() error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/containers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			s.StateManagerUseCase.SaveImageMetadata()
-		} else if r.Method == http.MethodGet {
 
+	saveImageMetadataHandler := handler.SaveImageMetadata(s.StateManagerUseCase)
+	getImageMetdataHandler := handler.GetImageMetadata(s.StateManagerUseCase)
+
+	mux.HandleFunc("/containers/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			saveImageMetadataHandler.ServeHTTP(w, r)
+		} else if r.Method == http.MethodGet {
+			getImageMetdataHandler.ServeHTTP(w, r)
 		} else {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}

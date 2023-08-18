@@ -4,7 +4,7 @@ import "time"
 
 type ContainerMetadata struct {
 	// LastTimestamp latests timestamp of this container metadata.
-	LastTimestamp time.Time
+	LastTimestamp time.Time `json:"last_timestamp"`
 	// LastRequestSolvedID latest request id solved by the Interceptor.
-	LastRequestSolvedID string
+	LastRequestSolvedID string `json:"last_request_solved_id"`
 }
