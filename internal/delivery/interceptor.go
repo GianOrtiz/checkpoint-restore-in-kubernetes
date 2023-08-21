@@ -10,19 +10,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type InterceptorServer struct {
+type interceptorServer struct {
 	Port               int
 	InterceptorUseCase usecase.InterceptorUseCase
 }
 
-func NewInterceptorServer(port int, interceptorUseCase usecase.InterceptorUseCase) *InterceptorServer {
-	return &InterceptorServer{
+func InterceptorServer(port int, interceptorUseCase usecase.InterceptorUseCase) *interceptorServer {
+	return &interceptorServer{
 		Port:               port,
 		InterceptorUseCase: interceptorUseCase,
 	}
 }
 
-func (s *InterceptorServer) Run() error {
+func (s *interceptorServer) Run() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		reqID := uuid.NewString()
