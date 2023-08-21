@@ -108,3 +108,27 @@ func (r *SQLInterceptedRequestRepository) GetLastVersion() (int, error) {
 	err = row.Scan(&version)
 	return version, err
 }
+
+func (r *SQLInterceptedRequestRepository) GetAllFromLastVersion(version int) ([]*entity.InterceptedRequest, error) {
+	stmt, err := r.conn.Prepare("SELECT id, solved_at, solved, req, version FROM intercepted_request WHERE version >= $1 ORDER BY version ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	var requests []*entity.InterceptedRequest
+	rows, err := stmt.Query(version)
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var req entity.InterceptedRequest
+		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request, &req.Version); err != nil {
+			return nil, err
+		}
+		requests = append(requests, &req)
+	}
+
+	return requests, nil
+}

@@ -30,4 +30,7 @@ type InterceptedRequestRepository interface {
 	GetAll() ([]*InterceptedRequest, error)
 	// GetLastVersion gets the last version of request in the event source datasource.
 	GetLastVersion() (int, error)
+	// GetAllFromLastVersion get all intercepted request in the datasource from the given
+	// last version to the newest one.
+	GetAllFromLastVersion(version int) ([]*InterceptedRequest, error)
 }

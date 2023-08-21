@@ -18,6 +18,8 @@ type InterceptorUseCase interface {
 	InterceptRequest(reqID string, req *http.Request) (*http.Response, error)
 	// Checkpoint creates a new checkpoint of the monitored container.
 	Checkpoint() error
+	// Reproject reprojects the requests to the monitored application since the given version.
+	Reproject(version int) error
 }
 
 type interceptorUseCase struct {
@@ -102,6 +104,40 @@ func (uc *interceptorUseCase) Checkpoint() error {
 		Container:      uc.Interceptor.MonitoredContainer,
 		CheckpointHash: checkpointHash,
 	})
+}
+
+func (uc *interceptorUseCase) Reproject(version int) error {
+	requests, err := uc.InterceptedRequestRepository.GetAllFromLastVersion(version)
+	if err != nil {
+		return err
+	}
+
+	for _, interceptedReq := range requests {
+		// Create the URL to access the monitored URL from the monitored application URL
+		// and the content receive in the path of the intercepted request.
+		url := uc.Interceptor.MonitoredContainer.HTTPUrl + interceptedReq.Request.URL.Path
+		reqCopy, err := http.NewRequest(interceptedReq.Request.Method, url, interceptedReq.Request.Body)
+		if err != nil {
+			return err
+		}
+
+		for key, values := range interceptedReq.Request.Header {
+			for _, value := range values {
+				reqCopy.Header.Add(key, value)
+			}
+		}
+
+		_, err = http.DefaultClient.Do(reqCopy)
+		if err != nil {
+			return err
+		}
+
+		if err := uc.InterceptedRequestRepository.SetSolved(interceptedReq.ID, time.Now(), true); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (uc *interceptorUseCase) generateHashForNewImage(containerName string) string {

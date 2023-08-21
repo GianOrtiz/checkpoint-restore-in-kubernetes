@@ -59,3 +59,13 @@ func (r *InMemoryInterceptedRequestRepository) GetLastVersion() (int, error) {
 	}
 	return greatestVersion, nil
 }
+
+func (r *InMemoryInterceptedRequestRepository) GetAllFromLastVersion(version int) ([]*entity.InterceptedRequest, error) {
+	var requests []*entity.InterceptedRequest
+	for _, req := range r.requests {
+		if req.Version >= version {
+			requests = append(requests, req)
+		}
+	}
+	return requests, nil
+}
