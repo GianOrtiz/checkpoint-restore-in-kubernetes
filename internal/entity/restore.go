@@ -2,8 +2,8 @@ package entity
 
 // RestoreConfig is the configuration to use to restore the application.
 type RestoreConfig struct {
-	// Container is the container to make the restore of.
-	Container *Container
+	// ContainerName is the name of the container to restore.
+	ContainerName string
 	// CheckpointHash is the hash of the image to use.
 	CheckpointHash string
 }

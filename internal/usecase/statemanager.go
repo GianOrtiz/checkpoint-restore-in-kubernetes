@@ -12,6 +12,9 @@ type StateManagerUseCase interface {
 	// Restore restores the monitored application container to a previous checkpointed
 	// image.
 	Restore() error
+	// DevelopmentRestore development use case to restore a specific container image with
+	// the given hash.
+	DevelopmentRestore(containerName string, containerHash string) error
 }
 
 // ContainerMetadataRepository repository to access container metadata at a datasource.
@@ -61,7 +64,14 @@ func (uc *stateManagerUseCase) Restore() error {
 	}
 
 	return uc.restoreService.Restore(&entity.RestoreConfig{
-		Container:      uc.monitoredApplication,
+		ContainerName:  uc.monitoredApplication.Name,
 		CheckpointHash: checkpointHash,
+	})
+}
+
+func (uc *stateManagerUseCase) DevelopmentRestore(containerName string, containerHash string) error {
+	return uc.restoreService.Restore(&entity.RestoreConfig{
+		ContainerName:  containerName,
+		CheckpointHash: containerHash,
 	})
 }

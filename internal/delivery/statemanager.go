@@ -6,17 +6,20 @@ import (
 	"net/http"
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/delivery/handler"
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/usecase"
 )
 
 type stateManagerServer struct {
 	Port                int
+	Config              entity.StateManagerConfig
 	StateManagerUseCase usecase.StateManagerUseCase
 }
 
-func StateManager(port int, stateManagerUseCase usecase.StateManagerUseCase) *stateManagerServer {
+func StateManager(port int, stateManagerUseCase usecase.StateManagerUseCase, stateManagerConfig entity.StateManagerConfig) *stateManagerServer {
 	return &stateManagerServer{
 		Port:                port,
+		Config:              stateManagerConfig,
 		StateManagerUseCase: stateManagerUseCase,
 	}
 }
@@ -36,6 +39,17 @@ func (s *stateManagerServer) Run() error {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
+
+	if s.Config.DevelopmentFeaturesEnabled {
+		mux.HandleFunc("/checkpoint", func(w http.ResponseWriter, r *http.Request) {
+			containerName := r.URL.Query().Get("name")
+			containerHash := r.URL.Query().Get("hash")
+			if err := s.StateManagerUseCase.DevelopmentRestore(containerName, containerHash); err != nil {
+				log.Println(err)
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		})
+	}
 
 	log.Printf("Listening on port %d\n", s.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)

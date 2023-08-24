@@ -21,23 +21,31 @@ func main() {
 		MonitoringContainerID: monitoredContainerID,
 		MonitoredContainer: &entity.Container{
 			ID:      monitoredContainerID,
-			PID:     0,
+			PID:     272389,
 			HTTPUrl: "http://localhost:8000",
 			Name:    "test",
 		},
 		Config: &interceptor.Config{
 			CheckpointingInterval: time.Duration(time.Minute * 20),
 			ContainerURL:          url.URL{},
-			ContainerPID:          0,
+			ContainerPID:          272389,
 			ContainerName:         "test",
 			StateManagerURL:       url.URL{},
 		},
 	}
-	checkpointService := checkpoint.Stub()
+	checkpointService, err := checkpoint.CRIU(checkpoint.CRIUCheckpointServiceConfig{
+		ImagesDirectory: "/home/gian/test-images",
+	})
+	if err != nil {
+		panic(err)
+	}
 	stateManagerService := statemanager.AlawaysAcceptingStub()
 	interceptedRequestRepository := interceptedrequest.InMemory()
 	interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository)
 	if err != nil {
+		panic(err)
+	}
+	if err := interceptorUseCase.Checkpoint(); err != nil {
 		panic(err)
 	}
 	interceptorServer := delivery.InterceptorServer(8001, interceptorUseCase)

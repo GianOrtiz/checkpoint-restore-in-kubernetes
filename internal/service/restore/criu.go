@@ -27,7 +27,8 @@ func CRIU(cfg CriuRestoreServiceConfig) (*criuRestoreService, error) {
 }
 
 func (service *criuRestoreService) Restore(cfg *entity.RestoreConfig) error {
-	checkpointImageDirectory := fmt.Sprintf("%s/%s", service.imagesDirectory, cfg.CheckpointHash)
+	containerImage := fmt.Sprintf("%s-%s", cfg.ContainerName, cfg.CheckpointHash)
+	checkpointImageDirectory := fmt.Sprintf("%s/%s", service.imagesDirectory, containerImage)
 	imagesDir, err := os.OpenFile(checkpointImageDirectory, 0, os.ModeDir)
 	if err != nil {
 		return err
@@ -38,7 +39,6 @@ func (service *criuRestoreService) Restore(cfg *entity.RestoreConfig) error {
 
 	// Uses the CRIU restore command to restore a specific image checkpoint by its hash.
 	return service.Criu.Restore(&rpc.CriuOpts{
-		Pid:         &cfg.Container.PID,
 		ImagesDirFd: &imagesDirFd,
 	}, nil)
 }
