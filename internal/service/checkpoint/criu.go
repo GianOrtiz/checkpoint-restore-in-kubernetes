@@ -32,6 +32,7 @@ func CRIU(cfg CRIUCheckpointServiceConfig) (*CRIUCheckpointService, error) {
 
 func (service *CRIUCheckpointService) Checkpoint(config *entity.CheckpointConfig) error {
 	checkpointImageDirectory := fmt.Sprintf("%s/%s", service.imagesDirectory, config.CheckpointHash)
+	os.Mkdir(checkpointImageDirectory, os.ModeDir) // Creates the checkpointing directory if it is not created yet.
 	imagesDir, err := os.OpenFile(checkpointImageDirectory, 0, os.ModeDir)
 	if err != nil {
 		return err
