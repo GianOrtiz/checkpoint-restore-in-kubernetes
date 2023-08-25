@@ -9,6 +9,7 @@ import (
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/repository/interceptedrequest"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/service/checkpoint"
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/service/scheduler"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/service/statemanager"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/usecase"
 	"github.com/google/uuid"
@@ -39,15 +40,18 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	scheduler := scheduler.Local()
 	stateManagerService := statemanager.AlawaysAcceptingStub()
 	interceptedRequestRepository := interceptedrequest.InMemory()
-	interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository)
+	interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, scheduler)
 	if err != nil {
 		panic(err)
 	}
-	if err := interceptorUseCase.Checkpoint(); err != nil {
-		panic(err)
-	}
+
+	go func(interceptorUseCase usecase.InterceptorUseCase) {
+		scheduler.ScheduleCheckpoint(interceptorUseCase, interceptor.Config.CheckpointingInterval)
+	}(interceptorUseCase)
+
 	interceptorServer := delivery.InterceptorServer(8001, interceptorUseCase)
 	interceptorServer.Run()
 }

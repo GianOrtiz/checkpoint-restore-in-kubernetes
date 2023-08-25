@@ -22,16 +22,23 @@ type InterceptorUseCase interface {
 	Reproject(version int) error
 }
 
+// Scheduler schedules tasks to be handled in the future.
+type Scheduler interface {
+	// ScheduleCheckpoint schedules the checkponint to be made in the future.
+	ScheduleCheckpoint(usecase InterceptorUseCase, scheduleIn time.Duration) error
+}
+
 type interceptorUseCase struct {
 	Interceptor                  *entity.Interceptor
 	CheckpointService            entity.CheckpointService
 	StateManagerService          entity.StateManagerService
 	InterceptedRequestRepository entity.InterceptedRequestRepository
+	Scheduler                    Scheduler
 	LastVersion                  int
 	Mutex                        sync.Mutex
 }
 
-func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository) (InterceptorUseCase, error) {
+func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository, scheduler Scheduler) (InterceptorUseCase, error) {
 	// Retrieve the last version of request in the database
 	lastVersion, err := interceptedRequestRepository.GetLastVersion()
 	if err != nil {
@@ -44,6 +51,7 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 		CheckpointService:            checkpointService,
 		StateManagerService:          stateManagerService,
 		LastVersion:                  lastVersion,
+		Scheduler:                    scheduler,
 		Mutex:                        sync.Mutex{},
 	}, nil
 }
@@ -100,10 +108,16 @@ func (uc *interceptorUseCase) Checkpoint() error {
 	}
 
 	checkpointHash := uc.generateHashForNewImage(uc.Interceptor.MonitoredContainer.Name)
-	return uc.CheckpointService.Checkpoint(&entity.CheckpointConfig{
+	err := uc.CheckpointService.Checkpoint(&entity.CheckpointConfig{
 		Container:      uc.Interceptor.MonitoredContainer,
 		CheckpointHash: checkpointHash,
 	})
+	if err != nil {
+		return err
+	}
+
+	// Reeschedule checkpoint in the future.
+	return uc.Scheduler.ScheduleCheckpoint(uc, uc.Interceptor.Config.CheckpointingInterval)
 }
 
 func (uc *interceptorUseCase) Reproject(version int) error {

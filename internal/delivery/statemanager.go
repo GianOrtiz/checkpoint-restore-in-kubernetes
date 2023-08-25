@@ -5,18 +5,18 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/statemanager"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/delivery/handler"
-	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/usecase"
 )
 
 type stateManagerServer struct {
 	Port                int
-	Config              entity.StateManagerConfig
+	Config              statemanager.StateManagerConfig
 	StateManagerUseCase usecase.StateManagerUseCase
 }
 
-func StateManager(port int, stateManagerUseCase usecase.StateManagerUseCase, stateManagerConfig entity.StateManagerConfig) *stateManagerServer {
+func StateManager(port int, stateManagerUseCase usecase.StateManagerUseCase, stateManagerConfig statemanager.StateManagerConfig) *stateManagerServer {
 	return &stateManagerServer{
 		Port:                port,
 		Config:              stateManagerConfig,
