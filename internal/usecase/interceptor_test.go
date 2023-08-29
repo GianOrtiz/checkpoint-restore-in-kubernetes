@@ -16,11 +16,19 @@ import (
 
 type fakeHandler struct{}
 
+type dummyScheduler struct{}
+
+func (s *dummyScheduler) ScheduleCheckpoint(usecase InterceptorUseCase, scheduleIn time.Duration) error {
+	return nil
+}
+
 func (h *fakeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
 func TestInterceptRequest(t *testing.T) {
+	scheduler := &dummyScheduler{}
+
 	t.Run("when receiving a http request", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "http://localhost:8000", nil)
 
@@ -38,7 +46,7 @@ func TestInterceptRequest(t *testing.T) {
 				},
 			}
 			interceptedRequestRepository := interceptedrequest.InMemory()
-			useCase, _ := Interceptor(&interceptor, nil, nil, interceptedRequestRepository)
+			useCase, _ := Interceptor(&interceptor, nil, nil, interceptedRequestRepository, scheduler)
 
 			reqID := uuid.NewString()
 			useCase.InterceptRequest(reqID, req)
@@ -74,7 +82,7 @@ func TestInterceptRequest(t *testing.T) {
 				},
 			}
 			interceptedRequestRepository := interceptedrequest.InMemory()
-			useCase, _ := Interceptor(&interceptor, nil, nil, interceptedRequestRepository)
+			useCase, _ := Interceptor(&interceptor, nil, nil, interceptedRequestRepository, scheduler)
 			defer testServer.Close()
 
 			req := httptest.NewRequest(http.MethodGet, testServer.URL, nil)
@@ -107,6 +115,7 @@ func TestInterceptRequest(t *testing.T) {
 }
 
 func TestCheckpoint(t *testing.T) {
+	scheduler := &dummyScheduler{}
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	checkpointService := mock_entity.NewMockCheckpointService(ctrl)
@@ -130,7 +139,7 @@ func TestCheckpoint(t *testing.T) {
 		},
 	}
 	interceptedRequestRepository := interceptedrequest.InMemory()
-	useCase, _ := Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository)
+	useCase, _ := Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, scheduler)
 
 	err := useCase.Checkpoint()
 	if err != nil {

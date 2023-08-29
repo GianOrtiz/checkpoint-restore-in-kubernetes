@@ -40,11 +40,13 @@ func (service *CRIUCheckpointService) Checkpoint(config *entity.CheckpointConfig
 	defer imagesDir.Close()
 
 	imagesDirFd := int32(imagesDir.Fd())
+	leaveRunning := true
 
 	// Uses the dump command on CRIU to dump a new checkpoint image of the process in
 	// the given directory by the configuration.
 	return service.Dump(&rpc.CriuOpts{
-		Pid:         &config.Container.PID,
-		ImagesDirFd: &imagesDirFd,
+		Pid:          &config.Container.PID,
+		ImagesDirFd:  &imagesDirFd,
+		LeaveRunning: &leaveRunning,
 	}, nil)
 }
