@@ -18,20 +18,26 @@ package controllers
 
 import (
 	"context"
+	"strconv"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const DEPLOYMENT_MONITORING_ANNOTATION = "crsc.io/checkpoint-restore"
+const DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION = "crsc.io/checkpoint-interval"
 
 // DeploymentReconciler reconciles a Deployment object
 type DeploymentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	monitoredDeployments map[types.UID]appsv1.Deployment
 }
 
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -53,19 +59,38 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	// Verify if the deployment has the annotation to monitor it.
-	deploymentMonitoringAnnotation, ok := deployment.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
-	if !ok || deploymentMonitoringAnnotation != "true" {
-		// Deployment does not request monitoring.
-		return ctrl.Result{}, nil
+	// Deployment was created and not yet monitored, attach Interceptor to the Pod and create Checkpoint resource.
+	if _, ok := r.monitoredDeployments[deployment.UID]; !ok {
+		r.monitoredDeployments[deployment.UID] = deployment
+
+		// Verify if the deployment has the annotation to monitor it.
+		deploymentMonitoringAnnotation, ok := deployment.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
+		if !ok || deploymentMonitoringAnnotation != "true" {
+			// Deployment does not request monitoring.
+			return ctrl.Result{}, nil
+		}
+
+		checkpointInterval := time.Duration(10 * time.Minute)
+		deploymentCheckpointInterval, ok := deployment.Annotations[DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION]
+		if ok {
+			deploymentCheckpointIntervalValue, err := strconv.Atoi(deploymentCheckpointInterval)
+			if err == nil {
+				checkpointInterval = time.Duration(time.Minute * time.Duration(deploymentCheckpointIntervalValue*1000000000))
+			}
+		}
+
+		// TODO: Create Checkpoint resource.
+
+		// TODO: Attach Interceptor to the Pod.
 	}
 
-	// We assume that every monitored deployment has at most 1 replica.
+	if deployment.DeletionTimestamp != nil {
+		delete(r.monitoredDeployments, deployment.UID)
 
-	// If the deployment was created, add it to the resources to monitor. Create a new Interceptor for the deployment,
-	// modify the service exposing the Deployment to expose the Interceptor, create a new Service to expose the deployment.
+		// TODO: Delete all Checkpoint/Restore resources.
 
-	// If the deployment was removed, removes the interceptor and services.
+		return ctrl.Result{}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
