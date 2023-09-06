@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -78,6 +79,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				checkpointInterval = time.Duration(time.Minute * time.Duration(deploymentCheckpointIntervalValue*1000000000))
 			}
 		}
+		fmt.Println(checkpointInterval)
 
 		// TODO: Create Checkpoint resource.
 
