@@ -22,6 +22,7 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -76,32 +77,50 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// Deployment was created and not yet monitored, attach Interceptor to the Pod and create Checkpoint resource.
 	if _, ok := r.monitoredDeployments[deploymentIdentificator]; !ok {
 		logger.Info("Deployment is not monitored yet.")
-		r.monitoredDeployments[deploymentIdentificator] = deployment
 
-		// Verify if the deployment has the annotation to monitor it.
-		deploymentMonitoringAnnotation, ok := deployment.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
-		if !ok || deploymentMonitoringAnnotation != "true" {
-			// Deployment does not request monitoring.
-			logger.Info("Deployment does not requires monitoring.")
-			return ctrl.Result{}, nil
-		}
+		// We assume every deployment just have 1 replica.
+		if deployment.Status.ReadyReplicas == 1 {
+			r.monitoredDeployments[deploymentIdentificator] = deployment
 
-		checkpointInterval := time.Duration(10 * time.Minute)
-		deploymentCheckpointInterval, ok := deployment.Annotations[DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION]
-		if ok {
-			deploymentCheckpointIntervalValue, err := strconv.Atoi(deploymentCheckpointInterval)
-			if err == nil {
-				checkpointInterval = time.Duration(time.Minute * time.Duration(deploymentCheckpointIntervalValue*1000000000))
+			// Verify if the deployment has the annotation to monitor it.
+			deploymentMonitoringAnnotation, ok := deployment.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
+			if !ok || deploymentMonitoringAnnotation != "true" {
+				// Deployment does not request monitoring.
+				logger.Info("Deployment does not requires monitoring.")
+				return ctrl.Result{}, nil
 			}
+
+			checkpointInterval := time.Duration(10 * time.Minute)
+			deploymentCheckpointInterval, ok := deployment.Annotations[DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION]
+			if ok {
+				deploymentCheckpointIntervalValue, err := strconv.Atoi(deploymentCheckpointInterval)
+				if err == nil {
+					checkpointInterval = time.Duration(time.Minute * time.Duration(deploymentCheckpointIntervalValue*1000000000))
+				}
+			}
+
+			logger.Info("Deployment checkpoint interval resolved.", "checkpointInterval", checkpointInterval)
+
+			// TODO: Create Checkpoint resource.
+			logger.Info("Creating Checkpoint Resource.")
+
+			logger.Info("Attaching interceptor to the Pod.")
+			deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers, v1.Container{
+				Name:  "interceptor",
+				Image: "docker.io/gianaortiz/crsc-interceptor",
+				Ports: []v1.ContainerPort{
+					{
+						ContainerPort: 8001,
+						HostPort:      8001,
+					},
+				},
+			})
+			if err := r.Update(ctx, &deployment); err != nil {
+				logger.Error(err, "Failed to attach Interceptor to Pod.")
+				return ctrl.Result{Requeue: true}, err
+			}
+			logger.Info("Attached interceptor to the Pod.")
 		}
-
-		logger.Info("Deployment checkpoint interval resolved.", "checkpointInterval", checkpointInterval)
-
-		// TODO: Create Checkpoint resource.
-		logger.Info("Creating Checkpoint Resource.")
-
-		// TODO: Attach Interceptor to the Pod.
-		logger.Info("Attaching interceptor to the Pod.")
 	}
 
 	return ctrl.Result{}, nil
