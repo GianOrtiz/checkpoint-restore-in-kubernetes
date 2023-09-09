@@ -1,11 +1,19 @@
 package interceptor
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"time"
 
 	"gopkg.in/yaml.v2"
+)
+
+const (
+	CHECKPOINT_INTERVAL_VARIABLE_KEY = "CHECKPOINT_INTERVAL"
+	CONTAINER_URL_VARIABLE_KEY       = "CONTAINER_URL"
+	STATE_MANAGER_URL_VARIABLE_KEY   = "STATE_MANAGER_URL"
+	CONTAINER_NAME_VARIABLE_KEY      = "CONTAINER_NAME"
 )
 
 // Config is the configuration of the Interceptor.
@@ -66,6 +74,38 @@ func FromYAML(content []byte) (*Config, error) {
 		ContainerURL:          *containerURL,
 		ContainerPID:          int32(cfg.ContainerPID),
 		ContainerName:         cfg.ContainerName,
+		StateManagerURL:       *stateManagerURL,
+	}, nil
+}
+
+func FromEnv() (*Config, error) {
+	checkpointIntervalString := os.Getenv(CHECKPOINT_INTERVAL_VARIABLE_KEY)
+	if checkpointIntervalString == "" {
+		return nil, fmt.Errorf("%s variable is missing", CHECKPOINT_INTERVAL_VARIABLE_KEY)
+	}
+
+	checkpointInterval, err := time.ParseDuration(checkpointIntervalString)
+	if err != nil {
+		return nil, fmt.Errorf("%s variable is not of valid format: %v", CHECKPOINT_INTERVAL_VARIABLE_KEY, err)
+	}
+
+	containerURL, err := url.Parse(os.Getenv(CONTAINER_URL_VARIABLE_KEY))
+	if err != nil {
+		return nil, fmt.Errorf("%s variable is not of valid format: %v", CONTAINER_URL_VARIABLE_KEY, err)
+	}
+
+	stateManagerURL, err := url.Parse(os.Getenv(STATE_MANAGER_URL_VARIABLE_KEY))
+	if err != nil {
+		return nil, fmt.Errorf("%s variable is not of valid format: %v", STATE_MANAGER_URL_VARIABLE_KEY, err)
+	}
+
+	containerName := os.Getenv(CONTAINER_NAME_VARIABLE_KEY)
+
+	return &Config{
+		CheckpointingInterval: checkpointInterval,
+		ContainerURL:          *containerURL,
+		ContainerPID:          int32(0),
+		ContainerName:         containerName,
 		StateManagerURL:       *stateManagerURL,
 	}, nil
 }

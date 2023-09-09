@@ -18,9 +18,10 @@ package controllers
 
 import (
 	"context"
-	"strconv"
-	"time"
+	"fmt"
 
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -90,13 +91,10 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{}, nil
 			}
 
-			checkpointInterval := time.Duration(10 * time.Minute)
+			checkpointInterval := "10min"
 			deploymentCheckpointInterval, ok := deployment.Annotations[DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION]
 			if ok {
-				deploymentCheckpointIntervalValue, err := strconv.Atoi(deploymentCheckpointInterval)
-				if err == nil {
-					checkpointInterval = time.Duration(time.Minute * time.Duration(deploymentCheckpointIntervalValue*1000000000))
-				}
+				checkpointInterval = deploymentCheckpointInterval
 			}
 
 			logger.Info("Deployment checkpoint interval resolved.", "checkpointInterval", checkpointInterval)
@@ -104,22 +102,9 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			// TODO: Create Checkpoint resource.
 			logger.Info("Creating Checkpoint Resource.")
 
-			logger.Info("Attaching interceptor to the Pod.")
-			deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers, v1.Container{
-				Name:  "interceptor",
-				Image: "docker.io/gianaortiz/crsc-interceptor",
-				Ports: []v1.ContainerPort{
-					{
-						ContainerPort: 8001,
-						HostPort:      8001,
-					},
-				},
-			})
-			if err := r.Update(ctx, &deployment); err != nil {
-				logger.Error(err, "Failed to attach Interceptor to Pod.")
+			if err := r.attachInterceptorToPod(deployment, checkpointInterval, logger, ctx); err != nil {
 				return ctrl.Result{Requeue: true}, err
 			}
-			logger.Info("Attached interceptor to the Pod.")
 		}
 	}
 
@@ -132,4 +117,57 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
+}
+
+func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
+	logger.Info("Attaching interceptor to the Pod.")
+	var deploymentContainerPort int32 = 8000
+	containers := deployment.Spec.Template.Spec.Containers
+	if len(containers) > 0 {
+		monitoredContainer := containers[0]
+		containerPorts := monitoredContainer.Ports
+		if len(containerPorts) > 0 {
+			containerPort := containerPorts[0].HostPort
+			if containerPort == 8001 {
+				deployment.Spec.Template.Spec.Containers[0].Ports[0].HostPort = 8000
+				containerPort = 8000
+			}
+			deploymentContainerPort = containerPort
+		}
+	}
+
+	deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers, v1.Container{
+		Name:  "interceptor",
+		Image: "docker.io/gianaortiz/crsc-interceptor",
+		Ports: []v1.ContainerPort{
+			{
+				ContainerPort: 8001,
+				HostPort:      8001,
+			},
+		},
+		Env: []v1.EnvVar{
+			{
+				Name:  interceptor.CHECKPOINT_INTERVAL_VARIABLE_KEY,
+				Value: checkpointInterval,
+			},
+			{
+				Name:  interceptor.CONTAINER_NAME_VARIABLE_KEY,
+				Value: deployment.Name,
+			},
+			{
+				Name:  interceptor.CONTAINER_URL_VARIABLE_KEY,
+				Value: fmt.Sprintf("http://localhost:%d", deploymentContainerPort),
+			},
+			{
+				Name:  interceptor.STATE_MANAGER_URL_VARIABLE_KEY,
+				Value: "http://localhost:5000", // TODO: resolve to correct value.
+			},
+		},
+	})
+	if err := r.Update(ctx, &deployment); err != nil {
+		logger.Error(err, "Failed to attach Interceptor to Pod.")
+		return err
+	}
+	logger.Info("Attached interceptor to the Pod.")
+	return nil
 }

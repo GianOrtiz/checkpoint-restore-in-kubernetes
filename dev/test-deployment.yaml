@@ -4,7 +4,7 @@ metadata:
   name: busybox-deployment
   annotations:
     crsc.io/checkpoint-restore: "true"
-    crsc.io/checkpoint-interval: "450"
+    crsc.io/checkpoint-interval: 450s
   labels:
     app: busybox
 spec:
