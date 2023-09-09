@@ -18,13 +18,11 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -38,7 +36,7 @@ type DeploymentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	monitoredDeployments map[types.UID]appsv1.Deployment
+	monitoredDeployments map[string]appsv1.Deployment
 }
 
 //+kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
@@ -51,23 +49,40 @@ type DeploymentReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
 func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	logger := log.FromContext(ctx)
+
+	deploymentIdentificator := req.NamespacedName.Name
 
 	// Retrieve the deployment from the cluster info.
+	logger.Info("Getting deployment", "namespacedName", req.NamespacedName)
 	deployment := appsv1.Deployment{}
 	err := r.Get(ctx, req.NamespacedName, &deployment)
 	if err != nil {
-		return ctrl.Result{}, err
+		logger.Info("Failed to get deployment")
+
+		if _, ok := r.monitoredDeployments[deploymentIdentificator]; ok {
+			logger.Info("Deployment was deleted, removing from monitored map.")
+			delete(r.monitoredDeployments, deploymentIdentificator)
+
+			// TODO: Delete all Checkpoint/Restore resources.
+			logger.Info("Delete Checkpoint/Restore resources.")
+
+			return ctrl.Result{}, nil
+		}
+
+		return ctrl.Result{Requeue: false}, err
 	}
 
 	// Deployment was created and not yet monitored, attach Interceptor to the Pod and create Checkpoint resource.
-	if _, ok := r.monitoredDeployments[deployment.UID]; !ok {
-		r.monitoredDeployments[deployment.UID] = deployment
+	if _, ok := r.monitoredDeployments[deploymentIdentificator]; !ok {
+		logger.Info("Deployment is not monitored yet.")
+		r.monitoredDeployments[deploymentIdentificator] = deployment
 
 		// Verify if the deployment has the annotation to monitor it.
 		deploymentMonitoringAnnotation, ok := deployment.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
 		if !ok || deploymentMonitoringAnnotation != "true" {
 			// Deployment does not request monitoring.
+			logger.Info("Deployment does not requires monitoring.")
 			return ctrl.Result{}, nil
 		}
 
@@ -79,19 +94,14 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				checkpointInterval = time.Duration(time.Minute * time.Duration(deploymentCheckpointIntervalValue*1000000000))
 			}
 		}
-		fmt.Println(checkpointInterval)
+
+		logger.Info("Deployment checkpoint interval resolved.", "checkpointInterval", checkpointInterval)
 
 		// TODO: Create Checkpoint resource.
+		logger.Info("Creating Checkpoint Resource.")
 
 		// TODO: Attach Interceptor to the Pod.
-	}
-
-	if deployment.DeletionTimestamp != nil {
-		delete(r.monitoredDeployments, deployment.UID)
-
-		// TODO: Delete all Checkpoint/Restore resources.
-
-		return ctrl.Result{}, nil
+		logger.Info("Attaching interceptor to the Pod.")
 	}
 
 	return ctrl.Result{}, nil
@@ -99,6 +109,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.monitoredDeployments = make(map[string]appsv1.Deployment)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
