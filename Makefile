@@ -279,3 +279,13 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+
+# Build Interceptor image.
+.PHONY: build-interceptor
+build-interceptor: ## Build the Interceptor image.
+	docker build -f interceptor.Dockerfile -t gianaortiz/crsc-interceptor .
+
+# Push Interceptor image.
+.PHONY: push-interceptor
+push-interceptor: build-interceptor ## Push the Interceptor image.
+	docker push gianaortiz/crsc-interceptor
