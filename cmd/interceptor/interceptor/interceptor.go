@@ -39,19 +39,13 @@ func New() (*Interceptor, error) {
 		Config: config,
 	}
 
-	// TODO: make checkpoint service be selected via environment.
-	checkpointService, err := checkpoint.CRIU(checkpoint.CRIUCheckpointServiceConfig{
-		ImagesDirectory: "/home/gian/test-images",
-	})
-	if err != nil {
-		return nil, err
-	}
 	// TODO: make state manager service be selected via environment.
 	stateManagerService := statemanager.AlawaysAcceptingStub()
 	// TODO: make intercepted request repository be selected via environment
 	interceptedRequestRepository := interceptedrequest.InMemory()
 
 	if config.Environment == interceptorConfig.KUBERNETES_ENVIRONMENT {
+		checkpointService := checkpoint.Kubernetes(interceptor.Config.KubernetesNodeIP, 10250)
 		interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, nil)
 		if err != nil {
 			return nil, err
@@ -62,6 +56,12 @@ func New() (*Interceptor, error) {
 		}, nil
 	} else {
 		scheduler := scheduler.Local()
+		checkpointService, err := checkpoint.CRIU(checkpoint.CRIUCheckpointServiceConfig{
+			ImagesDirectory: "/home/gian/test-images",
+		})
+		if err != nil {
+			return nil, err
+		}
 		interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, scheduler)
 		if err != nil {
 			return nil, err

@@ -166,6 +166,14 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 				Name:  interceptor.ENVIRONMENT_VARIABLE_KEY,
 				Value: interceptor.KUBERNETES_ENVIRONMENT,
 			},
+			{
+				Name: interceptor.KUBERNETES_NODE_IP_VARIABLE_KEY,
+				ValueFrom: &v1.EnvVarSource{
+					FieldRef: &v1.ObjectFieldSelector{
+						FieldPath: "status.hostIP",
+					},
+				},
+			},
 		},
 	})
 	if err := r.Update(ctx, &deployment); err != nil {
