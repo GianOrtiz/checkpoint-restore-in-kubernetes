@@ -49,6 +49,15 @@ func (s *interceptorServer) Run() error {
 		}
 	})
 
+	mux.HandleFunc("/checkpoint", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.InterceptorUseCase.Checkpoint(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	})
+
 	log.Printf("Listening on port %d\n", s.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
 }

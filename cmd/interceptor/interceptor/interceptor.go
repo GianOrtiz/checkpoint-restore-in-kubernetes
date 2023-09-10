@@ -46,28 +46,40 @@ func New() (*Interceptor, error) {
 	if err != nil {
 		return nil, err
 	}
-	// TODO: make scheduler be selected via environment.
-	scheduler := scheduler.Local()
 	// TODO: make state manager service be selected via environment.
 	stateManagerService := statemanager.AlawaysAcceptingStub()
 	// TODO: make intercepted request repository be selected via environment
 	interceptedRequestRepository := interceptedrequest.InMemory()
-	interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, scheduler)
-	if err != nil {
-		return nil, err
-	}
 
-	return &Interceptor{
-		useCase:     interceptorUseCase,
-		Interceptor: &interceptor,
-		scheduler:   scheduler,
-	}, nil
+	if config.Environment == interceptorConfig.KUBERNETES_ENVIRONMENT {
+		interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &Interceptor{
+			useCase:     interceptorUseCase,
+			Interceptor: &interceptor,
+		}, nil
+	} else {
+		scheduler := scheduler.Local()
+		interceptorUseCase, err := usecase.Interceptor(&interceptor, checkpointService, stateManagerService, interceptedRequestRepository, scheduler)
+		if err != nil {
+			return nil, err
+		}
+		return &Interceptor{
+			useCase:     interceptorUseCase,
+			Interceptor: &interceptor,
+			scheduler:   scheduler,
+		}, nil
+	}
 }
 
 func (i *Interceptor) Run() error {
-	go func(interceptorUseCase usecase.InterceptorUseCase) {
-		i.scheduler.ScheduleCheckpoint(interceptorUseCase, i.Config.CheckpointingInterval)
-	}(i.useCase)
+	if i.Config.Environment == interceptorConfig.STANDALONE_ENVIRONMENT {
+		go func(interceptorUseCase usecase.InterceptorUseCase) {
+			i.scheduler.ScheduleCheckpoint(interceptorUseCase, i.Config.CheckpointingInterval)
+		}(i.useCase)
+	}
 
 	interceptorServer := delivery.InterceptorServer(8001, i.useCase)
 	if err := interceptorServer.Run(); err != nil {

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 )
 
@@ -116,8 +117,12 @@ func (uc *interceptorUseCase) Checkpoint() error {
 		return err
 	}
 
-	// Reeschedule checkpoint in the future.
-	return uc.Scheduler.ScheduleCheckpoint(uc, uc.Interceptor.Config.CheckpointingInterval)
+	if uc.Interceptor.Config.Environment == interceptor.STANDALONE_ENVIRONMENT {
+		// Reeschedule checkpoint in the future.
+		return uc.Scheduler.ScheduleCheckpoint(uc, uc.Interceptor.Config.CheckpointingInterval)
+	}
+
+	return nil
 }
 
 func (uc *interceptorUseCase) Reproject(version int) error {
