@@ -162,6 +162,10 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 				Name:  interceptor.STATE_MANAGER_URL_VARIABLE_KEY,
 				Value: "http://localhost:5000", // TODO: resolve to correct value.
 			},
+			{
+				Name:  interceptor.ENVIRONMENT_VARIABLE_KEY,
+				Value: interceptor.KUBERNETES_ENVIRONMENT,
+			},
 		},
 	})
 	if err := r.Update(ctx, &deployment); err != nil {

@@ -14,6 +14,12 @@ const (
 	CONTAINER_URL_VARIABLE_KEY       = "CONTAINER_URL"
 	STATE_MANAGER_URL_VARIABLE_KEY   = "STATE_MANAGER_URL"
 	CONTAINER_NAME_VARIABLE_KEY      = "CONTAINER_NAME"
+	ENVIRONMENT_VARIABLE_KEY         = "ENV"
+)
+
+const (
+	KUBERNETES_ENVIRONMENT = "kubernetes"
+	STANDALONE_ENVIRONMENT = "standalone"
 )
 
 // Config is the configuration of the Interceptor.
@@ -29,6 +35,8 @@ type Config struct {
 	ContainerName string
 	// StateManagerURL the url to use to communicate with the State Manager API.
 	StateManagerURL url.URL
+	// Environment environment where the Interceptor is running.
+	Environment string
 }
 
 func FromYAMLFile(filename string) (*Config, error) {
@@ -101,11 +109,17 @@ func FromEnv() (*Config, error) {
 
 	containerName := os.Getenv(CONTAINER_NAME_VARIABLE_KEY)
 
+	environment := os.Getenv(ENVIRONMENT_VARIABLE_KEY)
+	if environment == "" {
+		environment = STANDALONE_ENVIRONMENT
+	}
+
 	return &Config{
 		CheckpointingInterval: checkpointInterval,
 		ContainerURL:          *containerURL,
 		ContainerPID:          int32(0),
 		ContainerName:         containerName,
 		StateManagerURL:       *stateManagerURL,
+		Environment:           environment,
 	}, nil
 }
