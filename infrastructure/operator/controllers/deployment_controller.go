@@ -19,11 +19,14 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -99,10 +102,14 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 			logger.Info("Deployment checkpoint interval resolved.", "checkpointInterval", checkpointInterval)
 
-			// TODO: Create Checkpoint resource.
 			logger.Info("Creating Checkpoint Resource.")
-
 			if err := r.attachInterceptorToPod(deployment, checkpointInterval, logger, ctx); err != nil {
+				return ctrl.Result{Requeue: true}, err
+			}
+
+			// TODO: Create service for the Interceptor.
+
+			if err := r.createCheckpointCronJob(deployment, checkpointInterval, logger, ctx); err != nil {
 				return ctrl.Result{Requeue: true}, err
 			}
 		}
@@ -117,6 +124,44 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
+}
+
+func (r *DeploymentReconciler) createCheckpointCronJob(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
+	logger.Info("Creating checkpoint cron job.")
+	cronJobName := fmt.Sprintf("checkpoint-job-%s", deployment.Name)
+	duration, err := time.ParseDuration(checkpointInterval)
+	if err != nil {
+		return err
+	}
+	schedule := fmt.Sprintf("* /%d * * * *", int(duration.Minutes()))
+	cronJob := batchv1.CronJob{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cronJobName,
+		},
+		Spec: batchv1.CronJobSpec{
+			Schedule: schedule,
+			JobTemplate: batchv1.JobTemplateSpec{
+				Spec: batchv1.JobSpec{
+					Template: v1.PodTemplateSpec{
+						Spec: v1.PodSpec{
+							Containers: []v1.Container{{
+								Name: "checkpoint",
+								// TODO: changes the two values below.
+								Image:   "an-image-that-makes-http-requests",
+								Command: []string{"a", "command", "for", "http", "request"},
+							}},
+							RestartPolicy: v1.RestartPolicyOnFailure,
+						},
+					},
+				},
+			},
+		},
+	}
+	if err := r.Create(ctx, &cronJob); err != nil {
+		return err
+	}
+	logger.Info("Created Checkpoint CronJob")
+	return nil
 }
 
 func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
