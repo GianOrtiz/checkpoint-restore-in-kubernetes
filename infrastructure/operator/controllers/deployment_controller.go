@@ -28,6 +28,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -107,7 +108,9 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{Requeue: true}, err
 			}
 
-			// TODO: Create service for the Interceptor.
+			if err := r.createInterceptorService(deployment, logger, ctx); err != nil {
+				return ctrl.Result{Requeue: true}, err
+			}
 
 			if err := r.createCheckpointCronJob(deployment, checkpointInterval, logger, ctx); err != nil {
 				return ctrl.Result{Requeue: true}, err
@@ -124,6 +127,32 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
 		Complete(r)
+}
+
+func (r *DeploymentReconciler) createInterceptorService(deployment appsv1.Deployment, logger logr.Logger, ctx context.Context) error {
+	logger.Info("Creating Interceptor Service.")
+	service := v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: deployment.Name,
+		},
+		Spec: v1.ServiceSpec{
+			Selector: map[string]string{
+				"crsc.io/name": deployment.Name,
+			},
+			Ports: []v1.ServicePort{
+				{
+					Protocol:   v1.ProtocolTCP,
+					Port:       8001,
+					TargetPort: intstr.FromInt(8001),
+				},
+			},
+		},
+	}
+	if err := r.Create(ctx, &service); err != nil {
+		return err
+	}
+	logger.Info("Created Interceptor Service.")
+	return nil
 }
 
 func (r *DeploymentReconciler) createCheckpointCronJob(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
@@ -181,6 +210,7 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 		}
 	}
 
+	deployment.Annotations["crsc.io/name"] = deployment.Name
 	deployment.Spec.Template.Spec.Containers = append(deployment.Spec.Template.Spec.Containers, v1.Container{
 		Name:  "interceptor",
 		Image: "docker.io/gianaortiz/crsc-interceptor",
