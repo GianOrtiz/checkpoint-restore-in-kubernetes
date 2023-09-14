@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io"
+	defaultLog "log"
 	"net/http"
 	"os"
 
@@ -33,9 +34,10 @@ func (service *KubernetesCheckpointService) Checkpoint(config *entity.Checkpoint
 		service.nodeIP,
 		service.nodePort,
 		"default",
-		config.Container.Name,
+		config.PodName,
 		config.Container.Name,
 	)
+	defaultLog.Printf("address in use %q", address)
 	res, err := service.client.Post(address, "application/json", nil)
 	if err != nil {
 		return err
@@ -66,7 +68,6 @@ func getClient() *http.Client {
 	}
 	certs := x509.NewCertPool()
 
-	// We should really load this path dynamically as this depends on deep internals of kubernetes
 	pemData, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
 	if err != nil {
 		log.Log.Error(err, "could not read ca file")

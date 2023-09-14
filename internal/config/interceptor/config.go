@@ -2,6 +2,7 @@ package interceptor
 
 import (
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"time"
@@ -16,6 +17,7 @@ const (
 	CONTAINER_NAME_VARIABLE_KEY      = "CONTAINER_NAME"
 	ENVIRONMENT_VARIABLE_KEY         = "ENV"
 	KUBERNETES_NODE_IP_VARIABLE_KEY  = "KUBERNETES_NODE_IP"
+	KUBERNETES_POD_NAME_VARIABLE_KEY = "HOSTNAME"
 )
 
 const (
@@ -40,6 +42,8 @@ type Config struct {
 	Environment string
 	// KubernetesNodeIP the node IP of the Kubernetes the Interceptor is running in.
 	KubernetesNodeIP string
+	// KubernetesPodName the name of the Pod running on Kubernetes.
+	KubernetesPodName string
 }
 
 func FromYAMLFile(filename string) (*Config, error) {
@@ -118,6 +122,8 @@ func FromEnv() (*Config, error) {
 	}
 
 	kubernetesNodeIP := os.Getenv(KUBERNETES_NODE_IP_VARIABLE_KEY)
+	kubernetesPodName := os.Getenv(KUBERNETES_POD_NAME_VARIABLE_KEY)
+	log.Println(kubernetesPodName)
 
 	return &Config{
 		CheckpointingInterval: checkpointInterval,
@@ -127,5 +133,6 @@ func FromEnv() (*Config, error) {
 		StateManagerURL:       *stateManagerURL,
 		KubernetesNodeIP:      kubernetesNodeIP,
 		Environment:           environment,
+		KubernetesPodName:     kubernetesPodName,
 	}, nil
 }

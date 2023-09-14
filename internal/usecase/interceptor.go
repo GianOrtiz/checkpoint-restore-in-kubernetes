@@ -112,6 +112,7 @@ func (uc *interceptorUseCase) Checkpoint() error {
 	err := uc.CheckpointService.Checkpoint(&entity.CheckpointConfig{
 		Container:      uc.Interceptor.MonitoredContainer,
 		CheckpointHash: checkpointHash,
+		PodName:        uc.Interceptor.Config.KubernetesPodName,
 	})
 	if err != nil {
 		return err

@@ -145,6 +145,13 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 				HostPort:      8001,
 			},
 		},
+		VolumeMounts: []v1.VolumeMount{
+			{
+				Name:      "kubelet-certs",
+				MountPath: "/var/run/secrets/kubelet-certs",
+				ReadOnly:  true,
+			},
+		},
 		Env: []v1.EnvVar{
 			{
 				Name:  interceptor.CHECKPOINT_INTERVAL_VARIABLE_KEY,
@@ -173,6 +180,14 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 						FieldPath: "status.hostIP",
 					},
 				},
+			},
+		},
+	})
+	deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, v1.Volume{
+		Name: "kubelet-certs",
+		VolumeSource: v1.VolumeSource{
+			Secret: &v1.SecretVolumeSource{
+				SecretName: "kubelet-client-certs",
 			},
 		},
 	})

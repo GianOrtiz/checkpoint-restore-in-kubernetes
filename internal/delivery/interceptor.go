@@ -52,6 +52,7 @@ func (s *interceptorServer) Run() error {
 	mux.HandleFunc("/checkpoint", func(w http.ResponseWriter, r *http.Request) {
 		if err := s.InterceptorUseCase.Checkpoint(); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("intercept failed with err %v\n", err)
 			return
 		}
 
