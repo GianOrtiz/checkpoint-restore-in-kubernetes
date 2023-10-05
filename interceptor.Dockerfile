@@ -6,7 +6,7 @@ COPY . /app
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o interceptor cmd/interceptor/main.go
 
-FROM scratch
+FROM alpine
 
 WORKDIR /app
 
