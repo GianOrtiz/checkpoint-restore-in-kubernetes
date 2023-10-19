@@ -103,7 +103,7 @@ fmt: ## Run go fmt against code.
 
 .PHONY: vet
 vet: ## Run go vet against code.
-	go vet ./...
+	go vet -tags containers_image_openpgp ./...
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
@@ -117,7 +117,7 @@ build: manifests generate fmt vet ## Build manager binary.
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./infrastructure/operator/main.go
+	go run -tags containers_image_openpgp ./infrastructure/operator/main.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.
