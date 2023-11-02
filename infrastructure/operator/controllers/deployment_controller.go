@@ -159,7 +159,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				logger.Info("Found pod")
 				pod := podsList.Items[0]
 				podIP := pod.Status.PodIP
-				logger.Info("Pod IP %s", podIP)
+				logger.Info(fmt.Sprintf("Pod IP %s", podIP))
 				checkpoint := v1alpha1.Checkpoint{}
 				checkpointSelector := types.NamespacedName{
 					Namespace: "default",
