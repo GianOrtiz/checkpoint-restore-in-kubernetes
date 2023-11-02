@@ -138,7 +138,8 @@ func (r *DeploymentReconciler) createInterceptorService(deployment appsv1.Deploy
 	logger.Info("Creating Interceptor Service.")
 	service := v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: deployment.Name,
+			Name:      deployment.Name,
+			Namespace: deployment.Namespace,
 		},
 		Spec: v1.ServiceSpec{
 			Selector: map[string]string{
@@ -173,7 +174,8 @@ func (r *DeploymentReconciler) createCheckpoint(deployment appsv1.Deployment, ch
 			ContainerName: deployment.Name,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:      name,
+			Namespace: deployment.Namespace,
 		},
 	}
 	if err := r.Create(ctx, &checkpoint); err != nil {
