@@ -145,6 +145,36 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{Requeue: true}, err
 			}
 		}
+	} else {
+		podsList := &v1.PodList{}
+		matchLabels := deployment.Spec.Template.Labels
+		listOpts := []client.ListOption{
+			client.InNamespace(deployment.Namespace),
+			client.MatchingLabels(matchLabels),
+		}
+		if err := r.List(ctx, podsList, listOpts...); err != nil {
+			logger.Info("Failed to get pods")
+		} else {
+			if len(podsList.Items) > 0 {
+				logger.Info("Found pod")
+				pod := podsList.Items[0]
+				podIP := pod.Status.PodIP
+				logger.Info("Pod IP %s", podIP)
+				checkpoint := v1alpha1.Checkpoint{}
+				checkpointSelector := types.NamespacedName{
+					Namespace: "default",
+					Name:      "checkpoint-test",
+				}
+				if err := r.Get(ctx, checkpointSelector, &checkpoint); err == nil {
+					logger.Info("Retrieved associated Pod Checkpoint")
+					checkpoint.Spec.PodIP = podIP
+					logger.Info("Updating Pod Checkpoint with Pod IP")
+					if err := r.Update(ctx, &checkpoint); err != nil {
+						logger.Error(err, "failed to update checkpoint")
+					}
+				}
+			}
+		}
 	}
 
 	return ctrl.Result{}, nil
