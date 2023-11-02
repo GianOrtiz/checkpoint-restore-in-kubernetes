@@ -60,6 +60,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, nil
 	}
 
+	logger.Info("Got Pod")
+
 	monitoringAnnotation, ok := pod.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
 	if !ok || monitoringAnnotation != "true" {
 		logger.Info("Pod does not requires monitoring.")
@@ -69,10 +71,12 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	podIsAlreadyStoredForRestore := false
 	for key, podToRestore := range r.PodsToRestore {
 		if podToRestore.pod.Name == pod.Name {
+			logger.Info("Pod is scheduled to restore, restoring it...")
 			// Check for the container status to be running.
 			for _, container := range pod.Status.ContainerStatuses {
 				if container.Name == podToRestore.containerName {
 					if container.State.Running != nil {
+						podIsAlreadyStoredForRestore = true
 						// Container already started.
 						podIP := pod.Status.PodIP
 
@@ -106,14 +110,17 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 						break
 					}
 				}
+				logger.Info("Pod restored")
 			}
 		}
 	}
 
 	if !podIsAlreadyStoredForRestore {
+		logger.Info("Checking if pod has failed container")
 		// Add pod to restore if there is a fail container.
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Terminated != nil {
+				logger.Info("Adding Pod to pods to restore")
 				// Container crashed, it must be restored.
 				r.PodsToRestore[pod.Name] = podToRestore{
 					pod:           pod,
@@ -132,6 +139,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 					logger.Error(fmt.Errorf("change state sent status %d", res.StatusCode), "failed to change state")
 					continue
 				}
+				logger.Info("Added Pod to pods to restore")
+				break
 			}
 		}
 	}
