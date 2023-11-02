@@ -15,16 +15,16 @@ import (
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 	"github.com/containers/buildah"
+	"github.com/containers/common/pkg/config"
 	is "github.com/containers/image/v5/storage"
 	"github.com/containers/storage"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type KubernetesCheckpointService struct {
-	nodeIP         string
-	nodePort       int
-	client         *http.Client
-	buildahBuilder buildah.Builder
+	nodeIP   string
+	nodePort int
+	client   *http.Client
 }
 
 func Kubernetes(nodeIP string, nodePort int) *KubernetesCheckpointService {
@@ -53,9 +53,9 @@ func (service *KubernetesCheckpointService) Checkpoint(config *entity.Checkpoint
 	defer res.Body.Close()
 
 	if res.StatusCode == http.StatusOK {
-		if err := service.generateCheckpointImage(config.PodName, config.Container.Name, config.CheckpointHash); err != nil {
-			return err
-		}
+		// if err := service.generateCheckpointImage(config.PodName, config.Container.Name, config.CheckpointHash); err != nil {
+		// 	return err
+		// }
 
 		// TODO: Get the image path as a tar format.
 		// TODO: Get the contents of the image.
@@ -79,13 +79,23 @@ func (service *KubernetesCheckpointService) generateCheckpointImage(podName, con
 		return err
 	}
 
+	conf, err := config.Default()
+	if err != nil {
+		panic(err)
+	}
+	capabilitiesForRoot, err := conf.Capabilities("root", nil, nil)
+	if err != nil {
+		panic(err)
+	}
+
 	buildStore, err := storage.GetStore(buildOptions)
 	if err != nil {
 		return err
 	}
 
 	builderOptions := buildah.BuilderOptions{
-		FromImage: "scratch",
+		FromImage:    "scratch",
+		Capabilities: capabilitiesForRoot,
 	}
 
 	builder, err := buildah.NewBuilder(context.TODO(), buildStore, builderOptions)
@@ -94,7 +104,13 @@ func (service *KubernetesCheckpointService) generateCheckpointImage(podName, con
 	}
 
 	checkpointPath := "/var/lib/kubelet/checkpoints"
-	checkpointPrefix := fmt.Sprintf("%s_%s-%s-", podName, "default", containerName)
+	checkpointPrefix := fmt.Sprintf(
+		"checkpoint-(%s)_(%s)-%s-",
+		podName,
+		"default",
+		containerName,
+	)
+	defaultLog.Println("Checkpoint prefix regex", checkpointPrefix)
 	files, err := os.ReadDir(checkpointPath)
 	if err != nil {
 		return err
@@ -103,10 +119,13 @@ func (service *KubernetesCheckpointService) generateCheckpointImage(podName, con
 	var fileWithTheLatestTimestamp fs.DirEntry
 	var latestTimestamp time.Time
 	for _, file := range files {
+		defaultLog.Printf("File: %s", file.Name())
 		if !file.IsDir() {
-			regexPattern := fmt.Sprintf("%s*.tar", checkpointPrefix)
+			regexPattern := checkpointPrefix
 			fileMatchContainerCheckpointFilename, _ := regexp.MatchString(regexPattern, file.Name())
+			defaultLog.Printf("File %s is not directory", file.Name())
 			if fileMatchContainerCheckpointFilename {
+				defaultLog.Printf("File %s matchs a checkpoint filename", file.Name())
 				timestampRegex := regexp.MustCompile(`(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)`)
 				matches := timestampRegex.FindStringSubmatch(file.Name())
 				if len(matches) > 1 {
@@ -124,19 +143,24 @@ func (service *KubernetesCheckpointService) generateCheckpointImage(podName, con
 		}
 	}
 
+	builder.SetAnnotation("io.kubernetes.cri-o.annotations.checkpoint.name", containerName)
+
 	checkpointFullPath := fmt.Sprintf("%s/%s", checkpointPath, fileWithTheLatestTimestamp.Name())
+	defaultLog.Printf("This is the file selected %s", checkpointFullPath)
 	if err := builder.Add("/", false, buildah.AddAndCopyOptions{}, checkpointFullPath); err != nil {
+		defaultLog.Printf("Failed to add to builder: %v", err)
 		return err
 	}
 
-	builder.SetAnnotation("io.kubernetes.cri-o.annotations.checkpoint.name", containerName)
 	imageRef, err := is.Transport.ParseStoreReference(buildStore, "docker.io/gianaortiz/crsc-interceptor")
 	if err != nil {
+		defaultLog.Printf("Failed to parse store reference: %v", err)
 		return err
 	}
 
 	_, _, _, err = builder.Commit(context.TODO(), imageRef, buildah.CommitOptions{})
 	if err != nil {
+		defaultLog.Printf("Failed to commit: %v", err)
 		return err
 	}
 

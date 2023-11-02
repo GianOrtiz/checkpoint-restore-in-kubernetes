@@ -28,8 +28,10 @@ type CheckpointSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of Checkpoint. Edit checkpoint_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Interval is the interval in seconds to perform checkpoints.
+	Interval int `json:"interval"`
+	// ContainerName is the name of the container to target the checkpoint.
+	ContainerName string `json:"containerName"`
 }
 
 // CheckpointStatus defines the observed state of Checkpoint

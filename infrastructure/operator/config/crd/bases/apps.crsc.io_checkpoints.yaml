@@ -35,10 +35,16 @@ spec:
           spec:
             description: CheckpointSpec defines the desired state of Checkpoint
             properties:
-              foo:
-                description: Foo is an example field of Checkpoint. Edit checkpoint_types.go
-                  to remove/update
+              containerName:
+                description: ContainerName is the name of the container to target
+                  the checkpoint.
                 type: string
+              interval:
+                description: Interval is the interval in seconds to perform checkpoints.
+                type: integer
+            required:
+            - containerName
+            - interval
             type: object
           status:
             description: CheckpointStatus defines the observed state of Checkpoint

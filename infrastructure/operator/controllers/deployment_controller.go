@@ -21,10 +21,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/infrastructure/operator/api/v1alpha1"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
+	"github.com/containers/storage/pkg/reexec"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +37,10 @@ import (
 
 const DEPLOYMENT_MONITORING_ANNOTATION = "crsc.io/checkpoint-restore"
 const DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION = "crsc.io/checkpoint-interval"
+
+func init() {
+	reexec.Init()
+}
 
 // DeploymentReconciler reconciles a Deployment object
 type DeploymentReconciler struct {
@@ -112,7 +117,7 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				return ctrl.Result{Requeue: true}, err
 			}
 
-			if err := r.createCheckpointCronJob(deployment, checkpointInterval, logger, ctx); err != nil {
+			if err := r.createCheckpoint(deployment, checkpointInterval, logger, ctx); err != nil {
 				return ctrl.Result{Requeue: true}, err
 			}
 		}
@@ -142,8 +147,8 @@ func (r *DeploymentReconciler) createInterceptorService(deployment appsv1.Deploy
 			Ports: []v1.ServicePort{
 				{
 					Protocol:   v1.ProtocolTCP,
-					Port:       8001,
-					TargetPort: intstr.FromInt(8001),
+					Port:       8002,
+					TargetPort: intstr.FromInt(8002),
 				},
 			},
 		},
@@ -155,41 +160,26 @@ func (r *DeploymentReconciler) createInterceptorService(deployment appsv1.Deploy
 	return nil
 }
 
-func (r *DeploymentReconciler) createCheckpointCronJob(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
+func (r *DeploymentReconciler) createCheckpoint(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
 	logger.Info("Creating checkpoint cron job.")
-	cronJobName := fmt.Sprintf("checkpoint-job-%s", deployment.Name)
+	name := fmt.Sprintf("checkpoint-%s", deployment.Name)
 	duration, err := time.ParseDuration(checkpointInterval)
 	if err != nil {
 		return err
 	}
-	schedule := fmt.Sprintf("* /%d * * * *", int(duration.Minutes()))
-	cronJob := batchv1.CronJob{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: cronJobName,
+	checkpoint := v1alpha1.Checkpoint{
+		Spec: v1alpha1.CheckpointSpec{
+			Interval:      int(duration.Seconds()),
+			ContainerName: deployment.Name,
 		},
-		Spec: batchv1.CronJobSpec{
-			Schedule: schedule,
-			JobTemplate: batchv1.JobTemplateSpec{
-				Spec: batchv1.JobSpec{
-					Template: v1.PodTemplateSpec{
-						Spec: v1.PodSpec{
-							Containers: []v1.Container{{
-								Name: "checkpoint",
-								// TODO: changes the two values below.
-								Image:   "an-image-that-makes-http-requests",
-								Command: []string{"a", "command", "for", "http", "request"},
-							}},
-							RestartPolicy: v1.RestartPolicyOnFailure,
-						},
-					},
-				},
-			},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
 		},
 	}
-	if err := r.Create(ctx, &cronJob); err != nil {
+	if err := r.Create(ctx, &checkpoint); err != nil {
 		return err
 	}
-	logger.Info("Created Checkpoint CronJob")
+	logger.Info("Created Checkpoint")
 	return nil
 }
 
