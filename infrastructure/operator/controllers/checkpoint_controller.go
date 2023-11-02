@@ -66,7 +66,7 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	go func(ticker *time.Ticker) {
 		for range ticker.C {
 			// Call http to make checkpoint
-			url := fmt.Sprintf("http://%s:8002/checkpoint", checkpoint.Spec.PodIP)
+			url := fmt.Sprintf("http://%s:%d/checkpoint", checkpoint.Spec.PodIP, INTERCEPTOR_PORT)
 			res, err := http.Get(url)
 			if err != nil {
 				logger.Error(err, "failed to make checkpoint")
@@ -78,6 +78,8 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			}
 			if err := r.generateCheckpointImage(checkpoint.Spec.ContainerName); err != nil {
 				logger.Error(err, "failed to generate checkpoint image")
+			} else {
+				logger.Info("Successfully generated checkpoint image")
 			}
 		}
 	}(ticker)
