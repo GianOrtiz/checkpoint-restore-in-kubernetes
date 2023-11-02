@@ -18,6 +18,8 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,7 +38,7 @@ type PodReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	PodsToRestore []podToRestore
+	PodsToRestore map[string]podToRestore
 }
 
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
@@ -45,10 +47,6 @@ type PodReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Pod object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.14.1/pkg/reconcile
@@ -58,7 +56,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	pod := corev1.Pod{}
 	err := r.Get(ctx, req.NamespacedName, &pod)
 	if err != nil {
-
+		logger.Info("no pod found")
+		return ctrl.Result{}, nil
 	}
 
 	monitoringAnnotation, ok := pod.Annotations[DEPLOYMENT_MONITORING_ANNOTATION]
@@ -68,17 +67,43 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	}
 
 	podIsAlreadyStoredForRestore := false
-	for _, podToRestore := range r.PodsToRestore {
+	for key, podToRestore := range r.PodsToRestore {
 		if podToRestore.pod.Name == pod.Name {
 			// Check for the container status to be running.
 			for _, container := range pod.Status.ContainerStatuses {
 				if container.Name == podToRestore.containerName {
 					if container.State.Running != nil {
 						// Container already started.
+						podIP := pod.Status.PodIP
 
 						// Call interceptor to reproject all request.
+						reprojectURL := fmt.Sprintf("http://%s:8001/reproject", podIP)
+						res, err := http.Get(reprojectURL)
+						if err != nil {
+							logger.Error(err, "failed to reproject requests")
+							continue
+						}
+
+						if res.StatusCode != http.StatusOK {
+							logger.Error(fmt.Errorf("reproject sent status %d", res.StatusCode), "failed to reproject requests")
+							continue
+						}
 
 						// Change interceptor state to serving.
+						changeStateURL := fmt.Sprintf("http://%s:8001/state?state=Proxying", podIP)
+						res, err = http.Get(changeStateURL)
+						if err != nil {
+							logger.Error(err, "failed to change state")
+							continue
+						}
+
+						if res.StatusCode != http.StatusOK {
+							logger.Error(fmt.Errorf("change state sent status %d", res.StatusCode), "failed to change state")
+							continue
+						}
+
+						delete(r.PodsToRestore, key)
+						break
 					}
 				}
 			}
@@ -90,11 +115,23 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Terminated != nil {
 				// Container crashed, it must be restored.
-				r.PodsToRestore = append(r.PodsToRestore, podToRestore{
+				r.PodsToRestore[pod.Name] = podToRestore{
 					pod:           pod,
 					containerName: containerStatus.Name,
-				})
+				}
 				// Set the interceptor to wait status, so it cache all requests.
+				podIP := pod.Status.PodIP
+				changeStateURL := fmt.Sprintf("http://%s:8001/state?state=Caching", podIP)
+				res, err := http.Get(changeStateURL)
+				if err != nil {
+					logger.Error(err, "failed to change state")
+					continue
+				}
+
+				if res.StatusCode != http.StatusOK {
+					logger.Error(fmt.Errorf("change state sent status %d", res.StatusCode), "failed to change state")
+					continue
+				}
 			}
 		}
 	}
@@ -104,6 +141,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *PodReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.PodsToRestore = make(map[string]podToRestore)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&corev1.Pod{}).
 		Complete(r)
