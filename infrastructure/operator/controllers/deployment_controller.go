@@ -37,6 +37,7 @@ import (
 
 const DEPLOYMENT_MONITORING_ANNOTATION = "crsc.io/checkpoint-restore"
 const DEPLOYMENT_CHECKPOINT_INTERVAL_ANNOTATION = "crsc.io/checkpoint-interval"
+const INTERCEPTOR_PORT = 8001
 
 func init() {
 	reexec.Init()
@@ -148,8 +149,8 @@ func (r *DeploymentReconciler) createInterceptorService(deployment appsv1.Deploy
 			Ports: []v1.ServicePort{
 				{
 					Protocol:   v1.ProtocolTCP,
-					Port:       8002,
-					TargetPort: intstr.FromInt(8002),
+					Port:       INTERCEPTOR_PORT,
+					TargetPort: intstr.FromInt(INTERCEPTOR_PORT),
 				},
 			},
 		},
@@ -194,7 +195,7 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 		containerPorts := monitoredContainer.Ports
 		if len(containerPorts) > 0 {
 			containerPort := containerPorts[0].HostPort
-			if containerPort == 8001 {
+			if containerPort == INTERCEPTOR_PORT {
 				deployment.Spec.Template.Spec.Containers[0].Ports[0].HostPort = 8000
 				containerPort = 8000
 			}
@@ -208,8 +209,8 @@ func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployme
 		Image: "docker.io/gianaortiz/crsc-interceptor",
 		Ports: []v1.ContainerPort{
 			{
-				ContainerPort: 8001,
-				HostPort:      8001,
+				ContainerPort: INTERCEPTOR_PORT,
+				HostPort:      INTERCEPTOR_PORT,
 			},
 		},
 		VolumeMounts: []v1.VolumeMount{
