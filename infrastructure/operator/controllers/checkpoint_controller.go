@@ -66,7 +66,7 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	go func(ticker *time.Ticker) {
 		for range ticker.C {
 			// Call http to make checkpoint
-			url := fmt.Sprintf("http://%s:8002/checkpoint", checkpoint.Spec.ContainerName)
+			url := fmt.Sprintf("http://%s:8002/checkpoint", checkpoint.Spec.PodIP)
 			res, err := http.Get(url)
 			if err != nil {
 				logger.Error(err, "failed to make checkpoint")

@@ -29,6 +29,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -72,14 +73,36 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		logger.Info("Failed to get deployment")
 
-		if _, ok := r.monitoredDeployments[deploymentIdentificator]; ok {
-			logger.Info("Deployment was deleted, removing from monitored map.")
-			delete(r.monitoredDeployments, deploymentIdentificator)
+		logger.Info("Getting Pod")
+		pod := v1.Pod{}
+		err = r.Get(ctx, req.NamespacedName, &pod)
+		if err != nil {
+			if _, ok := r.monitoredDeployments[deploymentIdentificator]; ok {
+				logger.Info("Deployment was deleted, removing from monitored map.")
+				delete(r.monitoredDeployments, deploymentIdentificator)
 
-			// TODO: Delete all Checkpoint/Restore resources.
-			logger.Info("Delete Checkpoint/Restore resources.")
+				// TODO: Delete all Checkpoint/Restore resources.
+				logger.Info("Delete Checkpoint/Restore resources.")
 
-			return ctrl.Result{}, nil
+				return ctrl.Result{}, nil
+			}
+		}
+
+		logger.Info("Retrieved pod")
+		podIP := pod.Status.PodIP
+		logger.Info("Pod IP %s", podIP)
+		checkpoint := v1alpha1.Checkpoint{}
+		checkpointSelector := types.NamespacedName{
+			Namespace: "default",
+			Name:      "checkpoint-test",
+		}
+		if err := r.Get(ctx, checkpointSelector, &checkpoint); err == nil {
+			logger.Info("Retrieved associated Pod Checkpoint")
+			checkpoint.Spec.PodIP = podIP
+			logger.Info("Updating Pod Checkpoint with Pod IP")
+			if err := r.Update(ctx, &checkpoint); err != nil {
+				logger.Error(err, "failed to update checkpoint")
+			}
 		}
 
 		return ctrl.Result{Requeue: false}, err
@@ -132,6 +155,7 @@ func (r *DeploymentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.monitoredDeployments = make(map[string]appsv1.Deployment)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&appsv1.Deployment{}).
+		Owns(&v1.Pod{}).
 		Complete(r)
 }
 

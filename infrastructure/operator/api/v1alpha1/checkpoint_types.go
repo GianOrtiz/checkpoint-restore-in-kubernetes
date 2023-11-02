@@ -32,6 +32,8 @@ type CheckpointSpec struct {
 	Interval int `json:"interval"`
 	// ContainerName is the name of the container to target the checkpoint.
 	ContainerName string `json:"containerName"`
+	// PodIP is the IP of the Pod to make the calls for checkpoint.
+	PodIP string `json:"podIp"`
 }
 
 // CheckpointStatus defines the observed state of Checkpoint

@@ -42,9 +42,13 @@ spec:
               interval:
                 description: Interval is the interval in seconds to perform checkpoints.
                 type: integer
+              podIp:
+                description: PodIP is the IP of the Pod to make the calls for checkpoint.
+                type: string
             required:
             - containerName
             - interval
+            - podIp
             type: object
           status:
             description: CheckpointStatus defines the observed state of Checkpoint
