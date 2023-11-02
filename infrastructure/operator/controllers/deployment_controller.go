@@ -19,9 +19,7 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/infrastructure/operator/api/v1alpha1"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/containers/storage/pkg/reexec"
 	"github.com/go-logr/logr"
@@ -29,7 +27,6 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -73,36 +70,14 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err != nil {
 		logger.Info("Failed to get deployment")
 
-		logger.Info("Getting Pod")
-		pod := v1.Pod{}
-		err = r.Get(ctx, req.NamespacedName, &pod)
-		if err != nil {
-			if _, ok := r.monitoredDeployments[deploymentIdentificator]; ok {
-				logger.Info("Deployment was deleted, removing from monitored map.")
-				delete(r.monitoredDeployments, deploymentIdentificator)
+		if _, ok := r.monitoredDeployments[deploymentIdentificator]; ok {
+			logger.Info("Deployment was deleted, removing from monitored map.")
+			delete(r.monitoredDeployments, deploymentIdentificator)
 
-				// TODO: Delete all Checkpoint/Restore resources.
-				logger.Info("Delete Checkpoint/Restore resources.")
+			// TODO: Delete all Checkpoint/Restore resources.
+			logger.Info("Delete Checkpoint/Restore resources.")
 
-				return ctrl.Result{}, nil
-			}
-		}
-
-		logger.Info("Retrieved pod")
-		podIP := pod.Status.PodIP
-		logger.Info("Pod IP %s", podIP)
-		checkpoint := v1alpha1.Checkpoint{}
-		checkpointSelector := types.NamespacedName{
-			Namespace: "default",
-			Name:      "checkpoint-test",
-		}
-		if err := r.Get(ctx, checkpointSelector, &checkpoint); err == nil {
-			logger.Info("Retrieved associated Pod Checkpoint")
-			checkpoint.Spec.PodIP = podIP
-			logger.Info("Updating Pod Checkpoint with Pod IP")
-			if err := r.Update(ctx, &checkpoint); err != nil {
-				logger.Error(err, "failed to update checkpoint")
-			}
+			return ctrl.Result{}, nil
 		}
 
 		return ctrl.Result{Requeue: false}, err
@@ -139,40 +114,6 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 			if err := r.createInterceptorService(deployment, logger, ctx); err != nil {
 				return ctrl.Result{Requeue: true}, err
-			}
-
-			if err := r.createCheckpoint(deployment, checkpointInterval, logger, ctx); err != nil {
-				return ctrl.Result{Requeue: true}, err
-			}
-		}
-	} else {
-		podsList := &v1.PodList{}
-		matchLabels := deployment.Spec.Template.Labels
-		listOpts := []client.ListOption{
-			client.InNamespace(deployment.Namespace),
-			client.MatchingLabels(matchLabels),
-		}
-		if err := r.List(ctx, podsList, listOpts...); err != nil {
-			logger.Info("Failed to get pods")
-		} else {
-			if len(podsList.Items) > 0 {
-				logger.Info("Found pod")
-				pod := podsList.Items[0]
-				podIP := pod.Status.PodIP
-				logger.Info(fmt.Sprintf("Pod IP %s", podIP))
-				checkpoint := v1alpha1.Checkpoint{}
-				checkpointSelector := types.NamespacedName{
-					Namespace: "default",
-					Name:      "checkpoint-test",
-				}
-				if err := r.Get(ctx, checkpointSelector, &checkpoint); err == nil {
-					logger.Info("Retrieved associated Pod Checkpoint")
-					checkpoint.Spec.PodIP = podIP
-					logger.Info("Updating Pod Checkpoint with Pod IP")
-					if err := r.Update(ctx, &checkpoint); err != nil {
-						logger.Error(err, "failed to update checkpoint")
-					}
-				}
 			}
 		}
 	}
@@ -216,29 +157,30 @@ func (r *DeploymentReconciler) createInterceptorService(deployment appsv1.Deploy
 	return nil
 }
 
-func (r *DeploymentReconciler) createCheckpoint(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
-	logger.Info("Creating checkpoint cron job.")
-	name := fmt.Sprintf("checkpoint-%s", deployment.Name)
-	duration, err := time.ParseDuration(checkpointInterval)
-	if err != nil {
-		return err
-	}
-	checkpoint := v1alpha1.Checkpoint{
-		Spec: v1alpha1.CheckpointSpec{
-			Interval:      int(duration.Seconds()),
-			ContainerName: deployment.Name,
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: deployment.Namespace,
-		},
-	}
-	if err := r.Create(ctx, &checkpoint); err != nil {
-		return err
-	}
-	logger.Info("Created Checkpoint")
-	return nil
-}
+// TODO: remove if unused
+// func (r *DeploymentReconciler) createCheckpoint(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
+// 	logger.Info("Creating checkpoint cron job.")
+// 	name := fmt.Sprintf("checkpoint-%s", deployment.Name)
+// 	duration, err := time.ParseDuration(checkpointInterval)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	checkpoint := v1alpha1.Checkpoint{
+// 		Spec: v1alpha1.CheckpointSpec{
+// 			Interval:      int(duration.Seconds()),
+// 			ContainerName: deployment.Name,
+// 		},
+// 		ObjectMeta: metav1.ObjectMeta{
+// 			Name:      name,
+// 			Namespace: deployment.Namespace,
+// 		},
+// 	}
+// 	if err := r.Create(ctx, &checkpoint); err != nil {
+// 		return err
+// 	}
+// 	logger.Info("Created Checkpoint")
+// 	return nil
+// }
 
 func (r *DeploymentReconciler) attachInterceptorToPod(deployment appsv1.Deployment, checkpointInterval string, logger logr.Logger, ctx context.Context) error {
 	logger.Info("Attaching interceptor to the Pod.")

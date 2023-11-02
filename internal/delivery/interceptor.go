@@ -55,7 +55,15 @@ func (s *interceptorServer) Run() error {
 			log.Printf("intercept failed with err %v\n", err)
 			return
 		}
+		w.WriteHeader(http.StatusOK)
+	})
 
+	mux.HandleFunc("/reproject", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.InterceptorUseCase.Reproject(0); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("reprojection failed with err %v\n", err)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 
