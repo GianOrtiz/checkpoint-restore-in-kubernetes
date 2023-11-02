@@ -12,6 +12,13 @@ import (
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 )
 
+type InterceptorState int
+
+const (
+	Caching InterceptorState = iota
+	Proxying
+)
+
 // InterceptorUseCase declares use cases for the Interceptor. It declares the use cases for intercepting
 // requisitions and communicating with the Interceptor.
 type InterceptorUseCase interface {
@@ -21,6 +28,10 @@ type InterceptorUseCase interface {
 	Checkpoint() error
 	// Reproject reprojects the requests to the monitored application since the given version.
 	Reproject(version int) error
+	// GetState gets the current state of the interceptor.
+	GetState() InterceptorState
+	// SetState sets the current state of the interceptor.
+	SetState(state InterceptorState)
 }
 
 // Scheduler schedules tasks to be handled in the future.
@@ -37,6 +48,8 @@ type interceptorUseCase struct {
 	Scheduler                    Scheduler
 	LastVersion                  int
 	Mutex                        sync.Mutex
+	currentState                 InterceptorState
+	waitChannel                  chan struct{}
 }
 
 func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository, scheduler Scheduler) (InterceptorUseCase, error) {
@@ -46,7 +59,7 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 		return nil, err
 	}
 
-	return &interceptorUseCase{
+	usecase := interceptorUseCase{
 		Interceptor:                  interceptor,
 		InterceptedRequestRepository: interceptedRequestRepository,
 		CheckpointService:            checkpointService,
@@ -54,7 +67,11 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 		LastVersion:                  lastVersion,
 		Scheduler:                    scheduler,
 		Mutex:                        sync.Mutex{},
-	}, nil
+		currentState:                 Proxying,
+		waitChannel:                  make(chan struct{}),
+	}
+	close(usecase.waitChannel)
+	return &usecase, nil
 }
 
 // InterceptRequest intercepts a given request and return the response after it is
@@ -87,6 +104,10 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 		for _, value := range values {
 			reqCopy.Header.Add(key, value)
 		}
+	}
+
+	if uc.currentState == Caching {
+		<-uc.waitChannel
 	}
 
 	res, err := http.DefaultClient.Do(reqCopy)
@@ -124,6 +145,21 @@ func (uc *interceptorUseCase) Checkpoint() error {
 	}
 
 	return nil
+}
+
+func (uc *interceptorUseCase) GetState() InterceptorState {
+	return uc.currentState
+}
+
+func (uc *interceptorUseCase) SetState(state InterceptorState) {
+	if state == Caching {
+		uc.waitChannel = make(chan struct{})
+	} else if state == Proxying {
+		if uc.waitChannel != nil {
+			close(uc.waitChannel)
+		}
+	}
+	uc.currentState = state
 }
 
 func (uc *interceptorUseCase) Reproject(version int) error {

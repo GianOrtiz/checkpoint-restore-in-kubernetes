@@ -67,6 +67,27 @@ func (s *interceptorServer) Run() error {
 		w.WriteHeader(http.StatusOK)
 	})
 
+	mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			newState := r.URL.Query().Get("state")
+			if newState == "Proxying" {
+				s.InterceptorUseCase.SetState(usecase.Proxying)
+			} else {
+				s.InterceptorUseCase.SetState(usecase.Caching)
+			}
+			w.WriteHeader(http.StatusOK)
+		} else if r.Method == http.MethodGet {
+			state := s.InterceptorUseCase.GetState()
+			if state == usecase.Proxying {
+				w.Write([]byte("Proxying"))
+			} else {
+				w.Write([]byte("Caching"))
+			}
+		} else {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
+
 	log.Printf("Listening on port %d\n", s.Port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", s.Port), mux)
 }
