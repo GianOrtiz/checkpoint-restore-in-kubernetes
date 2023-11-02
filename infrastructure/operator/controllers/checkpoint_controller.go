@@ -202,6 +202,7 @@ func (r *CheckpointReconciler) generateCheckpointImage(containerName string) err
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CheckpointReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	r.monitoredCheckpoints = make(map[string]MonitoredCheckpoint)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Checkpoint{}).
 		Complete(r)
