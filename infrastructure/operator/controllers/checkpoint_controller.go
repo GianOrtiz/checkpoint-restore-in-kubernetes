@@ -38,10 +38,16 @@ import (
 	"github.com/containers/storage"
 )
 
+type MonitoredCheckpoint struct {
+	checkpoint v1alpha1.Checkpoint
+	ticker     *time.Ticker
+}
+
 // CheckpointReconciler reconciles a Checkpoint object
 type CheckpointReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme               *runtime.Scheme
+	monitoredCheckpoints map[string]MonitoredCheckpoint
 }
 
 //+kubebuilder:rbac:groups=apps.crsc.io,resources=checkpoints,verbs=get;list;watch;create;update;patch;delete
@@ -62,7 +68,20 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: false}, err
 	}
 
+	if _, ok := r.monitoredCheckpoints[checkpoint.Name]; !ok {
+		r.monitoredCheckpoints[checkpoint.Name] = MonitoredCheckpoint{
+			checkpoint: checkpoint,
+		}
+	}
+
+	if r.monitoredCheckpoints[checkpoint.Name].ticker != nil {
+		r.monitoredCheckpoints[checkpoint.Name].ticker.Stop()
+	}
+
 	ticker := time.NewTicker(time.Duration(checkpoint.Spec.Interval * 1000000000))
+	if monitoredCheckpoint, ok := r.monitoredCheckpoints[checkpoint.Name]; ok {
+		monitoredCheckpoint.ticker = ticker
+	}
 	go func(ticker *time.Ticker) {
 		for range ticker.C {
 			// Call http to make checkpoint
