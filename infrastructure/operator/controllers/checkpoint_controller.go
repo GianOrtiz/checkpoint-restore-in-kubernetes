@@ -66,7 +66,7 @@ func (r *CheckpointReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: false}, err
 	}
 
-	ticker := time.NewTicker(time.Duration(checkpoint.Spec.Interval * int(time.Second)))
+	ticker := time.NewTicker(time.Duration(checkpoint.Spec.Interval * 1000000000))
 	go func(ticker *time.Ticker) {
 		for range ticker.C {
 			// Call http to make checkpoint
