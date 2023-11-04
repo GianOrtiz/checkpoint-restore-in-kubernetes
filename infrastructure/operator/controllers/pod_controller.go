@@ -95,7 +95,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
 						// Change interceptor state to serving.
 						changeStateURL := fmt.Sprintf("http://%s:8001/state?state=Proxying", podIP)
-						res, err = http.Get(changeStateURL)
+						res, err = http.Post(changeStateURL, "application/x-www-form-urlencoded", nil)
 						if err != nil {
 							logger.Error(err, "failed to change state")
 							continue
@@ -129,7 +129,7 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 				// Set the interceptor to wait status, so it cache all requests.
 				podIP := pod.Status.PodIP
 				changeStateURL := fmt.Sprintf("http://%s:8001/state?state=Caching", podIP)
-				res, err := http.Get(changeStateURL)
+				res, err := http.Post(changeStateURL, "application/x-www-form-urlencoded", nil)
 				if err != nil {
 					logger.Error(err, "failed to change state")
 					continue

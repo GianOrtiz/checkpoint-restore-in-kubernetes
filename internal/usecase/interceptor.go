@@ -4,7 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -50,6 +52,7 @@ type interceptorUseCase struct {
 	Mutex                        sync.Mutex
 	currentState                 InterceptorState
 	waitChannel                  chan struct{}
+	logFile                      *os.File
 }
 
 func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository, scheduler Scheduler) (InterceptorUseCase, error) {
@@ -57,6 +60,23 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 	lastVersion, err := interceptedRequestRepository.GetLastVersion()
 	if err != nil {
 		return nil, err
+	}
+
+	var logFile *os.File
+	logFilename := "interceptor.log"
+	_, err = os.Stat(logFilename)
+	if os.IsNotExist(err) {
+		file, err := os.Create(logFilename)
+		if err != nil {
+			return nil, err
+		}
+		logFile = file
+	} else {
+		file, err := os.Open(logFilename)
+		if err != nil {
+			return nil, err
+		}
+		logFile = file
 	}
 
 	usecase := interceptorUseCase{
@@ -69,6 +89,7 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 		Mutex:                        sync.Mutex{},
 		currentState:                 Proxying,
 		waitChannel:                  make(chan struct{}),
+		logFile:                      logFile,
 	}
 	close(usecase.waitChannel)
 	return &usecase, nil
@@ -77,7 +98,17 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 // InterceptRequest intercepts a given request and return the response after it is
 // redirected to the monitored application.
 func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) (*http.Response, error) {
-	// TODO: abstract this
+	var endTime time.Time
+	startTime := time.Now()
+	defer func() {
+		duration := endTime.Sub(endTime)
+		metric := fmt.Sprintf("%s %d\n ", startTime.String(), duration.Microseconds())
+		log.Printf("Writing log metric %q", metric)
+		if _, err := uc.logFile.Write([]byte(metric)); err != nil {
+			log.Printf("failed to write metric %v", err)
+		}
+	}()
+
 	uc.Mutex.Lock()
 	interceptedRequest := entity.InterceptedRequest{
 		ID:      reqID,
@@ -152,9 +183,18 @@ func (uc *interceptorUseCase) GetState() InterceptorState {
 }
 
 func (uc *interceptorUseCase) SetState(state InterceptorState) {
+	now := time.Now()
 	if state == Caching {
+		event := fmt.Sprintf("%s caching\n", now.String())
+		if _, err := uc.logFile.Write([]byte(event)); err != nil {
+			log.Printf("failed to write event %v\n", err)
+		}
 		uc.waitChannel = make(chan struct{})
 	} else if state == Proxying {
+		event := fmt.Sprintf("%s proxying\n", now.String())
+		if _, err := uc.logFile.Write([]byte(event)); err != nil {
+			log.Printf("failed to write event %v\n", err)
+		}
 		if uc.waitChannel != nil {
 			close(uc.waitChannel)
 		}
