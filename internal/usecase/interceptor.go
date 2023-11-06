@@ -109,7 +109,7 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 		}
 	}()
 
-	uc.Mutex.Lock()
+	// uc.Mutex.Lock()
 	interceptedRequest := entity.InterceptedRequest{
 		ID:      reqID,
 		Request: req,
@@ -117,7 +117,7 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 		Version: uc.LastVersion + 1,
 	}
 	uc.LastVersion++
-	uc.Mutex.Unlock()
+	// uc.Mutex.Unlock()
 
 	if err := uc.InterceptedRequestRepository.Save(&interceptedRequest); err != nil {
 		return nil, err
