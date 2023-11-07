@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 
@@ -34,14 +33,14 @@ func (s *interceptorServer) Run() error {
 			return
 		}
 
-		responseBody, err := io.ReadAll(res.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		// responseBody, err := io.ReadAll(res.Body)
+		// if err != nil {
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	return
+		// }
 
 		w.WriteHeader(res.StatusCode)
-		w.Write(responseBody)
+		// w.Write(responseBody)
 		for key, values := range res.Header {
 			for _, value := range values {
 				w.Header().Add(key, value)

@@ -1,17 +1,27 @@
 package interceptedrequest
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/gob"
 	"time"
 
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
 )
+
+func init() {
+	gob.Register(entity.InterceptedRequestRelevantContent{})
+}
 
 type SQLInterceptedRequestRepository struct {
 	conn *sql.DB
 }
 
 func SQL(db *sql.DB) entity.InterceptedRequestRepository {
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS intercepted_request(id TEXT, solved_at TIMESTAMP(3), solved BOOL, req BYTEA, version INTEGER)")
+	if err != nil {
+		panic(err)
+	}
 	return &SQLInterceptedRequestRepository{
 		conn: db,
 	}
@@ -24,8 +34,13 @@ func (r *SQLInterceptedRequestRepository) Save(req *entity.InterceptedRequest) e
 	}
 	defer tx.Commit()
 
+	var request bytes.Buffer
+	encoder := gob.NewEncoder(&request)
+	if err := encoder.Encode(req.Request); err != nil {
+		return err
+	}
 	query := "INSERT INTO intercepted_request(id, solved_at, solved, req, version) VALUES($1, $2, $3, $4, $5)"
-	_, err = tx.Exec(query, req.ID, nil, req.Solved, req.Request, req.Version)
+	_, err = tx.Exec(query, req.ID, nil, req.Solved, request.Bytes(), req.Version)
 	if err != nil {
 		if err := tx.Rollback(); err != nil {
 			return err
@@ -65,6 +80,9 @@ func (r *SQLInterceptedRequestRepository) GetLastRequestSolved() (*entity.Interc
 	var req entity.InterceptedRequest
 	row := stmt.QueryRow()
 	if err := row.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request, &req.Version); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -81,14 +99,25 @@ func (r *SQLInterceptedRequestRepository) GetAll() ([]*entity.InterceptedRequest
 	var requests []*entity.InterceptedRequest
 	rows, err := stmt.Query()
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return []*entity.InterceptedRequest{}, nil
+		}
 		return nil, err
 	}
 
 	for rows.Next() {
 		var req entity.InterceptedRequest
-		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request, &req.Version); err != nil {
+		var request []byte
+		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &request, &req.Version); err != nil {
 			return nil, err
 		}
+		buffer := bytes.NewBuffer(request)
+		var decodedRequest entity.InterceptedRequestRelevantContent
+		dec := gob.NewDecoder(buffer)
+		if err := dec.Decode(&decodedRequest); err == nil {
+			req.Request = decodedRequest
+		}
+
 		requests = append(requests, &req)
 	}
 
@@ -106,6 +135,9 @@ func (r *SQLInterceptedRequestRepository) GetLastVersion() (int, error) {
 
 	row := stmt.QueryRow()
 	err = row.Scan(&version)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
 	return version, err
 }
 
@@ -119,13 +151,23 @@ func (r *SQLInterceptedRequestRepository) GetAllFromLastVersion(version int) ([]
 	var requests []*entity.InterceptedRequest
 	rows, err := stmt.Query(version)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return []*entity.InterceptedRequest{}, nil
+		}
 		return nil, err
 	}
 
 	for rows.Next() {
 		var req entity.InterceptedRequest
-		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &req.Request, &req.Version); err != nil {
+		var request []byte
+		if err := rows.Scan(&req.ID, &req.SolvedAt, &req.Solved, &request, &req.Version); err != nil {
 			return nil, err
+		}
+		buffer := bytes.NewBuffer(request)
+		var decodedRequest entity.InterceptedRequestRelevantContent
+		dec := gob.NewDecoder(buffer)
+		if err := dec.Decode(&decodedRequest); err == nil {
+			req.Request = decodedRequest
 		}
 		requests = append(requests, &req)
 	}

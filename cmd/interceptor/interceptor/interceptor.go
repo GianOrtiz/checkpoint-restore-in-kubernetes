@@ -1,6 +1,10 @@
 package interceptor
 
 import (
+	"database/sql"
+	"fmt"
+	"time"
+
 	interceptorConfig "github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/delivery"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
@@ -10,6 +14,8 @@ import (
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/service/statemanager"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/usecase"
 	"github.com/google/uuid"
+
+	_ "github.com/lib/pq"
 )
 
 type Interceptor struct {
@@ -42,7 +48,16 @@ func New() (*Interceptor, error) {
 	// TODO: make state manager service be selected via environment.
 	stateManagerService := statemanager.AlawaysAcceptingStub()
 	// TODO: make intercepted request repository be selected via environment
-	interceptedRequestRepository := interceptedrequest.InMemory()
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s "+
+		"password=%s dbname=%s sslmode=disable",
+		"postgres-db-lb", 5432, "postgres", "secret", "db")
+	db, err := sql.Open("postgres", psqlInfo)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(20)
+	db.SetConnMaxLifetime(time.Duration(time.Second * 1))
+	interceptedRequestRepository := interceptedrequest.SQL(db)
 
 	if config.Environment == interceptorConfig.KUBERNETES_ENVIRONMENT {
 		checkpointService := checkpoint.Kubernetes(interceptor.Config.KubernetesNodeIP, 10250)

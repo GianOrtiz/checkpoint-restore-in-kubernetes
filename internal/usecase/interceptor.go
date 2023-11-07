@@ -1,9 +1,11 @@
 package usecase
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -98,26 +100,35 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 // InterceptRequest intercepts a given request and return the response after it is
 // redirected to the monitored application.
 func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) (*http.Response, error) {
-	var endTime time.Time
-	startTime := time.Now()
-	defer func() {
-		duration := endTime.Sub(endTime)
-		metric := fmt.Sprintf("%s %d\n ", startTime.String(), duration.Microseconds())
-		log.Printf("Writing log metric %q", metric)
-		if _, err := uc.logFile.Write([]byte(metric)); err != nil {
-			log.Printf("failed to write metric %v", err)
-		}
-	}()
+	// var endTime time.Time
+	// startTime := time.Now()
+	// defer func() {
+	// 	duration := endTime.Sub(endTime)
+	// 	metric := fmt.Sprintf("%s %d\n ", startTime.String(), duration.Microseconds())
+	// 	log.Printf("Writing log metric %q", metric)
+	// 	if _, err := uc.logFile.Write([]byte(metric)); err != nil {
+	// 		log.Printf("failed to write metric %v", err)
+	// 	}
+	// }()
 
-	// uc.Mutex.Lock()
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	uc.Mutex.Lock()
 	interceptedRequest := entity.InterceptedRequest{
-		ID:      reqID,
-		Request: req,
+		ID: reqID,
+		Request: entity.InterceptedRequestRelevantContent{
+			Body:    body,
+			Method:  req.Method,
+			URLPath: req.URL.Path,
+			Header:  req.Header,
+		},
 		Solved:  false,
 		Version: uc.LastVersion + 1,
 	}
 	uc.LastVersion++
-	// uc.Mutex.Unlock()
+	uc.Mutex.Unlock()
 
 	if err := uc.InterceptedRequestRepository.Save(&interceptedRequest); err != nil {
 		return nil, err
@@ -126,7 +137,7 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 	// Create the URL to access the monitored URL from the monitored application URL
 	// and the content receive in the path of the intercepted request.
 	url := uc.Interceptor.MonitoredContainer.HTTPUrl + req.URL.Path
-	reqCopy, err := http.NewRequest(req.Method, url, req.Body)
+	reqCopy, err := http.NewRequest(req.Method, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +222,8 @@ func (uc *interceptorUseCase) Reproject(version int) error {
 	for _, interceptedReq := range requests {
 		// Create the URL to access the monitored URL from the monitored application URL
 		// and the content receive in the path of the intercepted request.
-		url := uc.Interceptor.MonitoredContainer.HTTPUrl + interceptedReq.Request.URL.Path
-		reqCopy, err := http.NewRequest(interceptedReq.Request.Method, url, interceptedReq.Request.Body)
+		url := uc.Interceptor.MonitoredContainer.HTTPUrl + interceptedReq.Request.URLPath
+		reqCopy, err := http.NewRequest(interceptedReq.Request.Method, url, bytes.NewBuffer(interceptedReq.Request.Body))
 		if err != nil {
 			return err
 		}
