@@ -2,7 +2,6 @@ package delivery
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 
@@ -34,18 +33,57 @@ func (s *interceptorServer) Run() error {
 			return
 		}
 
-		responseBody, err := io.ReadAll(res.Body)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		// responseBody, err := io.ReadAll(res.Body)
+		// if err != nil {
+		// 	w.WriteHeader(http.StatusInternalServerError)
+		// 	return
+		// }
 
 		w.WriteHeader(res.StatusCode)
-		w.Write(responseBody)
+		// w.Write(responseBody)
 		for key, values := range res.Header {
 			for _, value := range values {
 				w.Header().Add(key, value)
 			}
+		}
+	})
+
+	mux.HandleFunc("/checkpoint", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.InterceptorUseCase.Checkpoint(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("intercept failed with err %v\n", err)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/reproject", func(w http.ResponseWriter, r *http.Request) {
+		if err := s.InterceptorUseCase.Reproject(0); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("reprojection failed with err %v\n", err)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			newState := r.URL.Query().Get("state")
+			if newState == "Proxying" {
+				s.InterceptorUseCase.SetState(usecase.Proxying)
+			} else {
+				s.InterceptorUseCase.SetState(usecase.Caching)
+			}
+			w.WriteHeader(http.StatusOK)
+		} else if r.Method == http.MethodGet {
+			state := s.InterceptorUseCase.GetState()
+			if state == usecase.Proxying {
+				w.Write([]byte("Proxying"))
+			} else {
+				w.Write([]byte("Caching"))
+			}
+		} else {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
 	})
 

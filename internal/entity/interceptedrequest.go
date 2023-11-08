@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+type InterceptedRequestRelevantContent struct {
+	Body    []byte
+	Method  string
+	URLPath string
+	Header  http.Header
+}
+
 // InterceptedRequest is the representation of an HTTP request intercepted by our application.
 type InterceptedRequest struct {
 	// ID is an unique identifier as UUID of the request, assigned to it when it comes to the application.
@@ -12,7 +19,7 @@ type InterceptedRequest struct {
 	// SolvedAt is the datetime the request was solved by the monitored application.
 	SolvedAt *time.Time
 	// Request the representation of the HTTP request.
-	Request *http.Request
+	Request InterceptedRequestRelevantContent
 	// Solved indicates whether or not the request was already solved.
 	Solved bool
 	// Version indicates the event version of this request in the event sourcing.

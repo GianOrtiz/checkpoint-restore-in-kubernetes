@@ -1,14 +1,26 @@
 package usecase
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"hash/fnv"
+	"io"
+	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/config/interceptor"
 	"github.com/GianOrtiz/k8s-transparent-checkpoint-restore/internal/entity"
+)
+
+type InterceptorState int
+
+const (
+	Caching InterceptorState = iota
+	Proxying
 )
 
 // InterceptorUseCase declares use cases for the Interceptor. It declares the use cases for intercepting
@@ -20,6 +32,10 @@ type InterceptorUseCase interface {
 	Checkpoint() error
 	// Reproject reprojects the requests to the monitored application since the given version.
 	Reproject(version int) error
+	// GetState gets the current state of the interceptor.
+	GetState() InterceptorState
+	// SetState sets the current state of the interceptor.
+	SetState(state InterceptorState)
 }
 
 // Scheduler schedules tasks to be handled in the future.
@@ -36,6 +52,9 @@ type interceptorUseCase struct {
 	Scheduler                    Scheduler
 	LastVersion                  int
 	Mutex                        sync.Mutex
+	currentState                 InterceptorState
+	waitChannel                  chan struct{}
+	logFile                      *os.File
 }
 
 func Interceptor(interceptor *entity.Interceptor, checkpointService entity.CheckpointService, stateManagerService entity.StateManagerService, interceptedRequestRepository entity.InterceptedRequestRepository, scheduler Scheduler) (InterceptorUseCase, error) {
@@ -45,7 +64,24 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 		return nil, err
 	}
 
-	return &interceptorUseCase{
+	var logFile *os.File
+	logFilename := "interceptor.log"
+	_, err = os.Stat(logFilename)
+	if os.IsNotExist(err) {
+		file, err := os.Create(logFilename)
+		if err != nil {
+			return nil, err
+		}
+		logFile = file
+	} else {
+		file, err := os.Open(logFilename)
+		if err != nil {
+			return nil, err
+		}
+		logFile = file
+	}
+
+	usecase := interceptorUseCase{
 		Interceptor:                  interceptor,
 		InterceptedRequestRepository: interceptedRequestRepository,
 		CheckpointService:            checkpointService,
@@ -53,17 +89,41 @@ func Interceptor(interceptor *entity.Interceptor, checkpointService entity.Check
 		LastVersion:                  lastVersion,
 		Scheduler:                    scheduler,
 		Mutex:                        sync.Mutex{},
-	}, nil
+		currentState:                 Proxying,
+		waitChannel:                  make(chan struct{}),
+		logFile:                      logFile,
+	}
+	close(usecase.waitChannel)
+	return &usecase, nil
 }
 
 // InterceptRequest intercepts a given request and return the response after it is
 // redirected to the monitored application.
 func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) (*http.Response, error) {
-	// TODO: abstract this
+	// var endTime time.Time
+	// startTime := time.Now()
+	// defer func() {
+	// 	duration := endTime.Sub(endTime)
+	// 	metric := fmt.Sprintf("%s %d\n ", startTime.String(), duration.Microseconds())
+	// 	log.Printf("Writing log metric %q", metric)
+	// 	if _, err := uc.logFile.Write([]byte(metric)); err != nil {
+	// 		log.Printf("failed to write metric %v", err)
+	// 	}
+	// }()
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
 	uc.Mutex.Lock()
 	interceptedRequest := entity.InterceptedRequest{
-		ID:      reqID,
-		Request: req,
+		ID: reqID,
+		Request: entity.InterceptedRequestRelevantContent{
+			Body:    body,
+			Method:  req.Method,
+			URLPath: req.URL.Path,
+			Header:  req.Header,
+		},
 		Solved:  false,
 		Version: uc.LastVersion + 1,
 	}
@@ -77,7 +137,7 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 	// Create the URL to access the monitored URL from the monitored application URL
 	// and the content receive in the path of the intercepted request.
 	url := uc.Interceptor.MonitoredContainer.HTTPUrl + req.URL.Path
-	reqCopy, err := http.NewRequest(req.Method, url, req.Body)
+	reqCopy, err := http.NewRequest(req.Method, url, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +146,10 @@ func (uc *interceptorUseCase) InterceptRequest(reqID string, req *http.Request) 
 		for _, value := range values {
 			reqCopy.Header.Add(key, value)
 		}
+	}
+
+	if uc.currentState == Caching {
+		<-uc.waitChannel
 	}
 
 	res, err := http.DefaultClient.Do(reqCopy)
@@ -111,13 +175,42 @@ func (uc *interceptorUseCase) Checkpoint() error {
 	err := uc.CheckpointService.Checkpoint(&entity.CheckpointConfig{
 		Container:      uc.Interceptor.MonitoredContainer,
 		CheckpointHash: checkpointHash,
+		PodName:        uc.Interceptor.Config.KubernetesPodName,
 	})
 	if err != nil {
 		return err
 	}
 
-	// Reeschedule checkpoint in the future.
-	return uc.Scheduler.ScheduleCheckpoint(uc, uc.Interceptor.Config.CheckpointingInterval)
+	if uc.Interceptor.Config.Environment == interceptor.STANDALONE_ENVIRONMENT {
+		// Reeschedule checkpoint in the future.
+		return uc.Scheduler.ScheduleCheckpoint(uc, uc.Interceptor.Config.CheckpointingInterval)
+	}
+
+	return nil
+}
+
+func (uc *interceptorUseCase) GetState() InterceptorState {
+	return uc.currentState
+}
+
+func (uc *interceptorUseCase) SetState(state InterceptorState) {
+	now := time.Now()
+	if state == Caching {
+		event := fmt.Sprintf("%s caching\n", now.String())
+		if _, err := uc.logFile.Write([]byte(event)); err != nil {
+			log.Printf("failed to write event %v\n", err)
+		}
+		uc.waitChannel = make(chan struct{})
+	} else if state == Proxying {
+		event := fmt.Sprintf("%s proxying\n", now.String())
+		if _, err := uc.logFile.Write([]byte(event)); err != nil {
+			log.Printf("failed to write event %v\n", err)
+		}
+		if uc.waitChannel != nil {
+			close(uc.waitChannel)
+		}
+	}
+	uc.currentState = state
 }
 
 func (uc *interceptorUseCase) Reproject(version int) error {
@@ -129,8 +222,8 @@ func (uc *interceptorUseCase) Reproject(version int) error {
 	for _, interceptedReq := range requests {
 		// Create the URL to access the monitored URL from the monitored application URL
 		// and the content receive in the path of the intercepted request.
-		url := uc.Interceptor.MonitoredContainer.HTTPUrl + interceptedReq.Request.URL.Path
-		reqCopy, err := http.NewRequest(interceptedReq.Request.Method, url, interceptedReq.Request.Body)
+		url := uc.Interceptor.MonitoredContainer.HTTPUrl + interceptedReq.Request.URLPath
+		reqCopy, err := http.NewRequest(interceptedReq.Request.Method, url, bytes.NewBuffer(interceptedReq.Request.Body))
 		if err != nil {
 			return err
 		}

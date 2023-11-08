@@ -8,6 +8,7 @@ type CheckpointConfig struct {
 	Container *Container
 	// CheckpointHash is a hash to identify this checkpoint.
 	CheckpointHash string
+	PodName        string
 }
 
 // CheckpointService provides facilities for checkpointing our application.
