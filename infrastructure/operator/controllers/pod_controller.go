@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -71,7 +72,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	podIsAlreadyStoredForRestore := false
 	for key, podToRestore := range r.PodsToRestore {
 		if podToRestore.pod.Name == pod.Name {
-			logger.Info("Pod is scheduled to restore, restoring it...")
+			now := time.Now()
+			logger.Info("Pod is scheduled to restore, restoring it...", "time", now.String())
 			// Check for the container status to be running.
 			for _, container := range pod.Status.ContainerStatuses {
 				if container.Name == podToRestore.containerName {
@@ -106,6 +108,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 							continue
 						}
 
+						now = time.Now()
+						logger.Info("Pod restored", "time", now.String())
 						delete(r.PodsToRestore, key)
 						break
 					}
@@ -120,7 +124,8 @@ func (r *PodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		// Add pod to restore if there is a fail container.
 		for _, containerStatus := range pod.Status.ContainerStatuses {
 			if containerStatus.State.Terminated != nil {
-				logger.Info("Adding Pod to pods to restore")
+				now := time.Now()
+				logger.Info("Adding Pod to pods to restore", "time", now.String())
 				// Container crashed, it must be restored.
 				r.PodsToRestore[pod.Name] = podToRestore{
 					pod:           pod,
